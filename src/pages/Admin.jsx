@@ -164,10 +164,10 @@ function AbaEntregadores() {
 
   function confirmarExcluirScans(e) {
     setConfirm({
-      msg: `Excluir TODOS os scans de ${e.nome}? Os tokens serão zerados mas o cadastro permanece.`,
+      msg: `Excluir TODOS os scans e bilhetes de ${e.nome}? Os tokens e bilhetes serão zerados mas o cadastro permanece.`,
       action: async () => {
         await excluirTodosScansEntregador(e.cpf)
-        flash('✅ Scans excluídos')
+        flash('✅ Scans e bilhetes excluídos')
         setScans([])
       }
     })
@@ -245,7 +245,7 @@ function AbaEntregadores() {
         <div className="flex-col gap-3">
           <button className="btn btn-outline" style={{ color: 'var(--red)', borderColor: 'rgba(255,61,87,.3)' }}
             onClick={() => confirmarExcluirScans(selecionado)}>
-            🗑 Excluir todos os scans deste entregador
+            🗑 Excluir scans e bilhetes deste entregador
           </button>
           <button className="btn btn-outline" style={{ color: 'var(--red)', borderColor: 'rgba(255,61,87,.5)', background: 'rgba(255,61,87,.06)' }}
             onClick={() => confirmarExcluirEntregador(selecionado)}>

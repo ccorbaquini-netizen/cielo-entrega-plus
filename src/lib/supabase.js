@@ -223,8 +223,12 @@ export async function excluirScan(id) {
 }
 
 export async function excluirTodosScansEntregador(cpf) {
-  const { error } = await supabase.from('scans').delete().eq('cpf_entregador', cpf.replace(/\D/g,''))
-  if (error) throw new Error(error.message)
+  const cpfLimpo = cpf.replace(/\D/g,'')
+  // Exclui scans e bilhetes juntos (limpeza de dados de teste)
+  const { error: e1 } = await supabase.from('scans').delete().eq('cpf_entregador', cpfLimpo)
+  const { error: e2 } = await supabase.from('bilhetes').delete().eq('cpf_entregador', cpfLimpo)
+  if (e1) throw new Error(e1.message)
+  if (e2) throw new Error(e2.message)
 }
 
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
@@ -282,7 +286,7 @@ export async function buscarTokensNaoConvertidos(cpf) {
   const tokensConvertidos = (bilhetesData || []).reduce((s, r) => s + (r.tokens_usados || 0), 0)
 
   return {
-    tokensDisponiveis: totalTokens - tokensConvertidos,
+    tokensDisponiveis: Math.max(0, totalTokens - tokensConvertidos),
     tokensConvertidos,
     totalTokens,
     bilhetes: bilhetesData?.length || 0
