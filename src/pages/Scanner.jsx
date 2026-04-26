@@ -38,11 +38,15 @@ const IcoChev = () => (
 /* ── Geolocalização ──────────────────────────────────────────────────────── */
 function getGeolocacao() {
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) { reject(new Error('GPS não disponível')); return }
+    if (!navigator.geolocation) { reject(new Error('GPS não disponível neste dispositivo')); return }
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-      err => reject(new Error('GPS negado ou indisponível')),
-      { timeout: 12000, maximumAge: 0, enableHighAccuracy: true }
+      err => {
+        if (err.code === 1) reject(new Error('Permissão de localização negada. Ative nas configurações do navegador.'))
+        else if (err.code === 2) reject(new Error('GPS indisponível. Verifique se o GPS está ativo.'))
+        else reject(new Error('Tempo esgotado ao obter localização.'))
+      },
+      { timeout: 20000, maximumAge: 5000, enableHighAccuracy: true }
     )
   })
 }
@@ -63,6 +67,7 @@ export default function Scanner() {
   const [numeroPedido, setNumeroPedido] = useState('')
   const [resultado, setResultado] = useState(null)
   const [erro, setErro] = useState('')
+  const [gpsStatus, setGpsStatus] = useState('') // feedback GPS para o usuário
   const [html5QrCode, setHtml5QrCode] = useState(null)
   const scannerRef = useRef(null)
   const scanActive = useRef(false)
@@ -119,10 +124,17 @@ export default function Scanner() {
   async function processarEntrega(pedido) {
     setEstado(ST.GEOLOCATING)
     setErro('')
+    setGpsStatus('Solicitando permissão de localização...')
 
     // 1. Geolocalização (best-effort — não bloqueia)
     let geo = null
-    try { geo = await getGeolocacao() } catch {}
+    try {
+      setGpsStatus('Capturando coordenadas GPS...')
+      geo = await getGeolocacao()
+      setGpsStatus(`GPS obtido · precisão ${Math.round(geo.accuracy)}m`)
+    } catch (e) {
+      setGpsStatus(`⚠️ ${e.message}`)
+    }
 
     setEstado(ST.VALIDATING)
 
@@ -270,11 +282,20 @@ export default function Scanner() {
             <div style={{ fontFamily: 'var(--fd)', fontSize: 18, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>
               {estado === ST.GEOLOCATING ? 'Obtendo localização...' : 'Validando entrega...'}
             </div>
-            <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
+            <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5, marginBottom: 12 }}>
               {estado === ST.GEOLOCATING
                 ? 'Capturando GPS para confirmar presença no endereço.'
                 : `Consultando pedido ${numeroPedido} na Intelipost.`}
             </p>
+            {gpsStatus && (
+              <div style={{
+                fontSize: 12, color: 'var(--blue)',
+                background: 'var(--blue-dim)', border: '1px solid rgba(0,174,239,.2)',
+                borderRadius: 'var(--r)', padding: '8px 14px', display: 'inline-block'
+              }}>
+                📍 {gpsStatus}
+              </div>
+            )}
           </div>
         )}
 

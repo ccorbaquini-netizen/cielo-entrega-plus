@@ -169,3 +169,67 @@ export async function buscarTokens(cpf) {
   if (error) return 0
   return (data || []).reduce((sum, s) => sum + (s.tokens_creditados || 0), 0)
 }
+
+// ─── ADMIN — GESTÃO DE ENTREGADORES E SCANS ──────────────────────────────────
+
+export async function listarEntregadores() {
+  const { data, error } = await supabase
+    .from('entregadores')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function atualizarEntregador(id, campos) {
+  const { data, error } = await supabase
+    .from('entregadores')
+    .update(campos)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function excluirEntregador(id) {
+  // Exclui scans associados primeiro
+  await supabase.from('scans').delete().eq('cpf_entregador',
+    (await supabase.from('entregadores').select('cpf').eq('id', id).single()).data?.cpf
+  )
+  const { error } = await supabase.from('entregadores').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+export async function excluirScan(id) {
+  const { error } = await supabase.from('scans').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+export async function excluirTodosScansEntregador(cpf) {
+  const { error } = await supabase.from('scans').delete().eq('cpf_entregador', cpf.replace(/\D/g,''))
+  if (error) throw new Error(error.message)
+}
+
+// ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
+
+export async function buscarRelatorioEntregas({ dataInicio, dataFim, apenasAtivos } = {}) {
+  let query = supabase
+    .from('scans')
+    .select(`
+      id, numero_pedido, cpf_entregador, status_intelipost,
+      status, tokens_creditados, situacao,
+      lat_scan, lng_scan, accuracy_metros, distancia_metros,
+      geo_situacao, geo_mensagem, modo_simulacao, created_at,
+      entregadores!inner(nome, telefone)
+    `)
+    .order('created_at', { ascending: false })
+
+  if (dataInicio) query = query.gte('created_at', dataInicio)
+  if (dataFim)    query = query.lte('created_at', dataFim + 'T23:59:59')
+  if (apenasAtivos) query = query.eq('status', 'liberado')
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+  return data
+}
