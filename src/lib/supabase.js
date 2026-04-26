@@ -195,10 +195,24 @@ export async function atualizarEntregador(id, campos) {
 }
 
 export async function excluirEntregador(id) {
-  // Exclui scans associados primeiro
-  await supabase.from('scans').delete().eq('cpf_entregador',
-    (await supabase.from('entregadores').select('cpf').eq('id', id).single()).data?.cpf
-  )
+  // 1. Busca o CPF primeiro
+  const { data: ent, error: errBusca } = await supabase
+    .from('entregadores')
+    .select('cpf')
+    .eq('id', id)
+    .single()
+
+  if (errBusca || !ent) throw new Error('Entregador não encontrado')
+
+  const cpfLimpo = ent.cpf.replace(/\D/g, '')
+
+  // 2. Exclui bilhetes
+  await supabase.from('bilhetes').delete().eq('cpf_entregador', cpfLimpo)
+
+  // 3. Exclui scans
+  await supabase.from('scans').delete().eq('cpf_entregador', cpfLimpo)
+
+  // 4. Exclui o entregador
   const { error } = await supabase.from('entregadores').delete().eq('id', id)
   if (error) throw new Error(error.message)
 }
