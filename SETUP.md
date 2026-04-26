@@ -20,7 +20,7 @@
 2. Clique em "New Project"
 3. Preencha:
    - Name: cielo-entrega-plus
-   - Database Password: crie uma senha forte e ANOTE (Cris@195352251200scmn)
+   - Database Password: crie uma senha forte e ANOTE
    - Region: South America (São Paulo)
 4. Clique em "Create new project" e aguarde ~2 minutos
 

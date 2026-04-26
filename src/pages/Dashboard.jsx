@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { buscarEntregadorPorCPF } from '../lib/supabase'
+import Logo from '../components/Logo'
 
 /* ── Count-up hook ── */
 function useCountUp(target, duration = 1200) {
@@ -20,10 +21,10 @@ function useCountUp(target, duration = 1200) {
 }
 
 const prizes = [
-  { cls: 'p-lime', period: 'Mensal', desc: 'Vouchers combustível, recarga e manutenção', count: '~62 ganh./mês' },
-  { cls: 'p-blue', period: 'Trimestral', desc: 'Smartphone, capacete, kit manutenção e saúde', count: '5 ganhadores' },
-  { cls: 'p-teal', period: 'Semestral ★', desc: 'Scooter elétrica, notebook, smartphone premium', count: '5 ganhadores' },
-  { cls: 'p-red', period: 'Grande Prêmio', desc: 'Moto 0km ou PIX até R$ 30.000', count: '1 ganhador' },
+  { cls: 'p-lime', period: 'Mensal',       desc: 'Vouchers combustível, recarga e manutenção',  count: '~62 ganh./mês' },
+  { cls: 'p-blue', period: 'Trimestral',   desc: 'Smartphone, capacete, kit manutenção e saúde', count: '5 ganhadores' },
+  { cls: 'p-teal', period: 'Semestral ★',  desc: 'Scooter elétrica, notebook, smartphone premium',count: '5 ganhadores' },
+  { cls: 'p-red',  period: 'Grande Prêmio',desc: 'Moto 0km ou PIX até R$ 30.000',                count: '1 ganhador' },
 ]
 
 export default function Dashboard() {
@@ -31,10 +32,9 @@ export default function Dashboard() {
   const [entregador, setEntregador] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const tokens = 0 // will come from DB in Módulo 2
+  const tokens   = 0
   const bilhetes = 0
-  const progPct = Math.min((tokens % 10) / 10 * 100, 100)
-
+  const progPct  = Math.min((tokens % 10) / 10 * 100, 100)
   const animTokens = useCountUp(tokens)
 
   useEffect(() => {
@@ -51,25 +51,51 @@ export default function Dashboard() {
     </div>
   )
 
-  const nome1 = entregador?.nome?.split(' ')[0] || ''
+  const nome1     = entregador?.nome?.split(' ')[0] || ''
+  const selfieUrl = entregador?.selfie_url || null
 
   return (
     <div className="page">
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="header">
+        {/* Logo */}
         <div style={{ flex: 1 }}>
-          <div className="header-logo">
-            <span>entrega</span><span className="lime">+</span>
-          </div>
+          <Logo size="md" />
           <div className="header-sub">Olá, {nome1}</div>
         </div>
-        <div style={{
-          fontFamily: 'var(--fd)', fontSize: 11, fontWeight: 700, letterSpacing: '.08em',
-          textTransform: 'uppercase', color: 'var(--lime)',
-          background: 'var(--lime-dim2)', border: '1px solid rgba(197,211,42,.25)',
-          padding: '4px 10px', borderRadius: 100
-        }}>
-          Ativo
+
+        {/* Foto + status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Foto do entregador */}
+          {selfieUrl ? (
+            <img
+              src={selfieUrl}
+              alt={nome1}
+              style={{
+                width: 38, height: 38, borderRadius: '50%',
+                objectFit: 'cover',
+                border: '2px solid var(--lime)',
+                boxShadow: '0 0 10px rgba(197,211,42,.3)',
+                flexShrink: 0
+              }}
+            />
+          ) : (
+            <div style={{
+              width: 38, height: 38, borderRadius: '50%',
+              background: 'var(--card)', border: '2px solid var(--border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 16, flexShrink: 0
+            }}>👤</div>
+          )}
+          {/* Badge ativo */}
+          <div style={{
+            fontFamily: 'var(--fd)', fontSize: 11, fontWeight: 700, letterSpacing: '.08em',
+            textTransform: 'uppercase', color: 'var(--lime)',
+            background: 'var(--lime-dim2)', border: '1px solid rgba(197,211,42,.25)',
+            padding: '4px 10px', borderRadius: 100
+          }}>
+            Ativo
+          </div>
         </div>
       </div>
 
@@ -82,7 +108,6 @@ export default function Dashboard() {
             {animTokens}
             <span className="suf">pts</span>
           </div>
-
           <div className="prog-labels">
             <span>{tokens % 10}/10 para próximo bilhete</span>
             <strong>{bilhetes} bilhetes</strong>
@@ -90,37 +115,31 @@ export default function Dashboard() {
           <div className="prog-bar">
             <div className="prog-fill" style={{ width: `${progPct}%` }} />
           </div>
-
           {tokens >= 10 && (
             <button className="btn btn-lime" style={{ marginTop: 16 }}>
               Converter tokens em bilhetes
             </button>
           )}
-
           {tokens === 0 && (
             <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5 }}>
-              Leia o código de barras da etiqueta nas suas próximas entregas para acumular tokens.
+              Use o scanner abaixo para registrar suas entregas e acumular tokens.
             </p>
           )}
         </div>
 
-        {/* ── Scanner placeholder (Módulo 2) ── */}
-        <div className="fade-up-2" style={{
-          background: 'linear-gradient(135deg, var(--navy-2), var(--navy-3))',
-          border: '1px solid rgba(0,174,239,.2)',
-          borderRadius: 'var(--r2)', padding: '20px',
-          marginBottom: 14, textAlign: 'center'
-        }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
-          <div style={{ fontFamily: 'var(--fd)', fontSize: 15, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--blue)', marginBottom: 6 }}>
-            Scanner de Entregas
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.5 }}>
-            Disponível no Módulo 2 — leitura do código de barras da etiqueta com validação de geolocalização.
-          </p>
-        </div>
+        {/* ── Scanner (Módulo 2) ── */}
+        <button
+          className="btn btn-blue fade-up-2"
+          style={{ marginBottom: 14, gap: 10 }}
+          onClick={() => nav('/scanner')}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h2v10H7zM11 7h2v10h-2zM15 7h2v10h-2z"/>
+          </svg>
+          Registrar Entrega
+        </button>
 
-        {/* ── Bônus Frequência strip ── */}
+        {/* ── Bônus Frequência ── */}
         <div className="fade-up-2" style={{
           background: 'var(--lime-dim2)', border: '1px solid rgba(197,211,42,.22)',
           borderRadius: 'var(--r)', padding: '13px 15px', marginBottom: 18,
@@ -137,7 +156,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── Prizes ── */}
+        {/* ── Prêmios ── */}
         <div style={{ fontFamily: 'var(--fd)', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)', marginBottom: 10 }}>
           Prêmios do Programa
         </div>
@@ -150,12 +169,11 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
-
         <p style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'center', marginBottom: 8, lineHeight: 1.5 }}>
-          ★ Semestral e Grande Prêmio: mantenha-se ativo nas entregas nos últimos 2 meses
+          ★ Semestral e Grande Prêmio: ativo nas entregas nos últimos 2 meses
         </p>
 
-        {/* ── Histórico placeholder ── */}
+        {/* ── Histórico ── */}
         <div className="card fade-up-4" style={{ marginTop: 6 }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: 14, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 14 }}>
             Histórico

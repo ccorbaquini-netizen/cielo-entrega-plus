@@ -135,3 +135,37 @@ export async function registrarInstalacaoPWA(cpf) {
     .update({ pwa_instalado: true, updated_at: new Date().toISOString() })
     .eq('cpf', cpfLimpo)
 }
+
+// ─── MÓDULO 2 — SCANS E TOKENS ────────────────────────────────────────────────
+
+export async function registrarEntrega({ numeroPedido, cpf, lat, lng, accuracy }) {
+  const { data, error } = await supabase.functions.invoke('validar-entrega', {
+    body: { numeroPedido, cpf, lat, lng, accuracy }
+  })
+  if (error) throw new Error(error.message)
+  if (data?.erro) throw new Error(data.erro)
+  return data
+}
+
+export async function buscarHistoricoScans(cpf, limite = 20) {
+  const cpfLimpo = cpf.replace(/\D/g, '')
+  const { data, error } = await supabase
+    .from('scans')
+    .select('*')
+    .eq('cpf_entregador', cpfLimpo)
+    .order('created_at', { ascending: false })
+    .limit(limite)
+  if (error) return []
+  return data
+}
+
+export async function buscarTokens(cpf) {
+  const cpfLimpo = cpf.replace(/\D/g, '')
+  const { data, error } = await supabase
+    .from('scans')
+    .select('tokens_creditados')
+    .eq('cpf_entregador', cpfLimpo)
+    .eq('status', 'liberado')
+  if (error) return 0
+  return (data || []).reduce((sum, s) => sum + (s.tokens_creditados || 0), 0)
+}

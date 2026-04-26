@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { buscarEntregadorPorCPF } from '../lib/supabase'
+import Logo from '../components/Logo'
 
 const Ico = ({ d, s = 18 }) => (
   <svg width={s} height={s} viewBox="0 0 24 24" fill="none"
@@ -10,21 +11,9 @@ const Ico = ({ d, s = 18 }) => (
 )
 
 const features = [
-  {
-    icon: '🏷️', cls: 'fi-lime',
-    title: '10 tokens por entrega',
-    desc: 'Cada chamado Cielo concluído gera tokens automáticos na sua conta.'
-  },
-  {
-    icon: '⚡', cls: 'fi-blue',
-    title: 'Bônus Frequência',
-    desc: 'Entregue nos 3 meses do trimestre e ganhe +10 bilhetes extras garantidos.'
-  },
-  {
-    icon: '🏆', cls: 'fi-teal',
-    title: 'Grande Prêmio Anual',
-    desc: 'Moto 0km ou PIX até R$ 30.000 — sorteio vinculado à Loteria Federal.'
-  },
+  { icon: '🏷️', cls: 'fi-lime', title: '10 tokens por entrega',  desc: 'Cada chamado Cielo concluído gera tokens automáticos na sua conta.' },
+  { icon: '⚡',  cls: 'fi-blue', title: 'Bônus Frequência',        desc: 'Entregue nos 3 meses do trimestre e ganhe +10 bilhetes extras.' },
+  { icon: '🏆', cls: 'fi-teal', title: 'Grande Prêmio Anual',    desc: 'Moto 0km ou PIX até R$ 30.000 — sorteio vinculado à Loteria Federal.' },
 ]
 
 export default function Landing() {
@@ -49,35 +38,35 @@ export default function Landing() {
   return (
     <div className="page">
       {/* ── HERO ── */}
-      <div className="hero">
-        {/* Extra circle accent */}
+      <div className="hero" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
         <div style={{
           position: 'absolute', width: 100, height: 100, borderRadius: '50%',
           background: 'radial-gradient(circle, rgba(0,174,239,.18) 0%, transparent 70%)',
           top: '30%', right: '10%', pointerEvents: 'none'
         }} />
 
-        <div className="fade-up">
-          <div className="hero-eyebrow">Programa de Incentivo</div>
+        {/* Eyebrow com logo */}
+        <div className="fade-up" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 18 }}>
+          <div className="hero-eyebrow" style={{ margin: 0 }}>Programa de Incentivo</div>
+          <Logo size="sm" />
         </div>
 
-        <h1 className="hero-title fade-up-2">
+        <h1 className="hero-title fade-up-2" style={{ textAlign: 'center' }}>
           <span>Entregou</span><br />
           <span>Cielo?</span><br />
           <span className="lime">Ganhe</span><br />
           <span className="blue">Prêmios!</span>
         </h1>
 
-        <span className="hero-rule fade-up-3" />
+        <span className="hero-rule fade-up-3" style={{ margin: '14px auto 16px' }} />
 
-        <p className="hero-desc fade-up-3">
-          Cada entrega vira tokens. Tokens viram bilhetes. Bilhetes podem mudar sua vida.
+        <p className="hero-desc fade-up-3" style={{ textAlign: 'center' }}>
+          Cada entrega vira tokens. Tokens viram bilhetes.<br />Bilhetes podem mudar sua vida.
         </p>
       </div>
 
       {/* ── CONTENT ── */}
       <div className="container" style={{ paddingTop: 28, paddingBottom: 36 }}>
-
         {jaCad && (
           <div className="alert alert-lime slide-in" style={{ marginBottom: 18 }}>
             <Ico d="M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4 12 14.01 9 11.01" />
@@ -85,26 +74,19 @@ export default function Landing() {
           </div>
         )}
 
-        {/* Feature list */}
         <div className="feat-list fade-up">
           {features.map((f, i) => (
             <div key={i} className="feat-card">
               <div className={`feat-icon ${f.cls}`}>{f.icon}</div>
-              <div>
-                <h3>{f.title}</h3>
-                <p>{f.desc}</p>
-              </div>
+              <div><h3>{f.title}</h3><p>{f.desc}</p></div>
             </div>
           ))}
         </div>
 
-        {/* Sorteios strip */}
         <div className="fade-up-2" style={{
           background: 'linear-gradient(90deg, var(--navy-2), var(--navy-3))',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--r)',
-          padding: '14px 16px',
-          marginBottom: 20,
+          border: '1px solid var(--border)', borderRadius: 'var(--r)',
+          padding: '14px 16px', marginBottom: 20,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between'
         }}>
           <div>
@@ -120,22 +102,17 @@ export default function Landing() {
           </div>
         </div>
 
-        {/* CTA */}
         <div className="flex-col gap-3 fade-up-3">
           {jaCad ? (
             <button className="btn btn-lime" onClick={() => navigate('/painel')}>
-              Ver meu painel
-              <Ico d="M9 18l6-6-6-6" />
+              Ver meu painel <Ico d="M9 18l6-6-6-6" />
             </button>
           ) : (
             <>
               <button className="btn btn-lime" onClick={() => navigate('/cadastro')}>
-                Quero participar
-                <Ico d="M9 18l6-6-6-6" />
+                Quero participar <Ico d="M9 18l6-6-6-6" />
               </button>
-              <p className="text-muted text-center">
-                Gratuito · Sem compromisso · Sem exclusividade
-              </p>
+              <p className="text-muted text-center">Gratuito · Sem compromisso · Sem exclusividade</p>
             </>
           )}
         </div>
