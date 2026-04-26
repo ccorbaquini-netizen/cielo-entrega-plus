@@ -38,6 +38,8 @@ export default function Register() {
   const [cpfErr, setCpfErr] = useState('')
   const [nome, setNome] = useState('')
   const [tel, setTel] = useState('')
+  const [cidade, setCidade] = useState('')
+  const [uf, setUf] = useState('')
   const [selfieFile, setSelfieFile] = useState(null)
   const [selfieUrl, setSelfieUrl] = useState(null)
   const [termos, setTermos] = useState(false)
@@ -60,6 +62,8 @@ export default function Register() {
 
   function hDados() {
     if (nome.trim().length < 3) { setErro('Digite seu nome completo.'); return }
+    if (!cidade.trim()) { setErro('Digite sua cidade.'); return }
+    if (!uf) { setErro('Selecione o estado (UF).'); return }
     setErro(''); setStep(2)
   }
 
@@ -96,7 +100,7 @@ export default function Register() {
     if (!termos) { setErro('Aceite o regulamento para continuar.'); return }
     setLoading(true); setErro('')
     try {
-      const e = await cadastrarEntregador({ cpf, nome, telefone: tel, selfieFile, plataforma: detectarPlataforma() })
+      const e = await cadastrarEntregador({ cpf, nome, telefone: tel, cidade, uf, selfieFile, plataforma: detectarPlataforma() })
       localStorage.setItem('entregador_cpf', e.cpf); setStep(4)
     } catch { setErro('Erro ao finalizar. Tente novamente.') }
     setLoading(false)
@@ -180,6 +184,22 @@ export default function Register() {
                   <input className="input" type="tel" inputMode="numeric" placeholder="(11) 99999-9999"
                     value={tel} onChange={e => setTel(fmtPhone(e.target.value))} autoComplete="tel" />
                   <span style={{ fontSize: 11, color: 'var(--muted)' }}>Para receber avisos de sorteios quando disponível</span>
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label className="label">Cidade *</label>
+                    <input className="input" type="text" placeholder="Sua cidade"
+                      value={cidade} onChange={e => setCidade(e.target.value)} autoComplete="address-level2" />
+                  </div>
+                  <div className="field" style={{ width: 80 }}>
+                    <label className="label">UF *</label>
+                    <select className="input" value={uf} onChange={e => setUf(e.target.value)}>
+                      <option value="">—</option>
+                      {['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
               {erro && <div className="alert alert-err mt-4"><span>{erro}</span></div>}

@@ -34,6 +34,20 @@ function fmtCPF(c) {
   return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
 }
 
+// Link de GPS que abre no Maps nativo (Android/iOS/Desktop)
+function GpsLink({ lat, lng, accuracy }) {
+  if (!lat || !lng) return <span style={{ fontSize: 10, color: 'var(--muted)' }}>📍 GPS não capturado</span>
+  const url = `https://maps.google.com/?q=${lat},${lng}`
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer"
+      style={{ fontSize: 10, color: 'var(--blue)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+      📍 {lat.toFixed(5)}, {lng.toFixed(5)}
+      {accuracy ? ` ±${Math.round(accuracy)}m` : ''}
+      <span style={{ fontSize: 9, opacity: .7 }}>↗</span>
+    </a>
+  )
+}
+
 function exportCSV(dados, nome) {
   if (!dados.length) return
   const cols = Object.keys(dados[0])
@@ -255,7 +269,7 @@ function AbaEntregadores() {
               <div>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--off)' }}>{s.numero_pedido}</div>
                 <div style={{ fontSize: 10, color: 'var(--muted)' }}>{fmtData(s.created_at)} · {s.situacao?.replace(/_/g,' ')}</div>
-                {s.lat_scan && <div style={{ fontSize: 10, color: 'var(--blue)' }}>📍 {s.lat_scan?.toFixed(5)}, {s.lng_scan?.toFixed(5)}</div>}
+                {s.lat_scan && <GpsLink lat={s.lat_scan} lng={s.lng_scan} accuracy={s.accuracy_metros} />}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontFamily: 'var(--fd)', fontSize: 16, fontWeight: 800, color: s.tokens_creditados > 0 ? 'var(--teal)' : 'var(--red)' }}>
@@ -313,12 +327,13 @@ function AbaEntregadores() {
 
 // ── Aba Relatórios ─────────────────────────────────────────────────────────
 function AbaRelatorios() {
-  const [dataInicio, setDataInicio] = useState('')
-  const [dataFim,    setDataFim]    = useState('')
-  const [apenasLib,  setApenasLib]  = useState(false)
-  const [dados,      setDados]      = useState(null)
-  const [loading,    setLoading]    = useState(false)
-  const [erro,       setErro]       = useState('')
+  const [dataInicio,  setDataInicio]  = useState('')
+  const [dataFim,     setDataFim]     = useState('')
+  const [apenasLib,   setApenasLib]   = useState(false)
+  const [filtroPedido,setFiltroPedido]= useState('')
+  const [dados,       setDados]       = useState(null)
+  const [loading,     setLoading]     = useState(false)
+  const [erro,        setErro]        = useState('')
 
   async function gerar() {
     setLoading(true); setErro(''); setDados(null)
@@ -329,33 +344,37 @@ function AbaRelatorios() {
     setLoading(false)
   }
 
+  // Filtra localmente por número do pedido
+  const dadosFiltrados = filtroPedido.trim()
+    ? (dados || []).filter(s => s.numero_pedido?.toLowerCase().includes(filtroPedido.trim().toLowerCase()))
+    : dados
+
   function baixarCSV() {
-    if (!dados) return
-    const flat = dados.map(s => ({
-      'Data/Hora': fmtData(s.created_at),
-      'Pedido': s.numero_pedido,
-      'CPF': fmtCPF(s.cpf_entregador),
-      'Nome': s.entregadores?.nome || '',
-      'Telefone': s.entregadores?.telefone || '',
-      'Status Intelipost': s.status_intelipost || '',
-      'Status Token': s.status || '',
-      'Tokens': s.tokens_creditados || 0,
-      'Situação': s.situacao || '',
-      'Latitude': s.lat_scan || '',
-      'Longitude': s.lng_scan || '',
-      'Precisão GPS (m)': s.accuracy_metros ? Math.round(s.accuracy_metros) : '',
+    if (!dadosFiltrados?.length) return
+    const flat = dadosFiltrados.map(s => ({
+      'Data/Hora':              fmtData(s.created_at),
+      'Pedido':                 s.numero_pedido,
+      'CPF':                    fmtCPF(s.cpf_entregador),
+      'Nome':                   s.entregadores?.nome || '',
+      'Telefone':               s.entregadores?.telefone || '',
+      'Status Intelipost':      s.status_intelipost || '',
+      'Status Token':           s.status || '',
+      'Tokens':                 s.tokens_creditados || 0,
+      'Situação':               s.situacao || '',
+      'Latitude':               s.lat_scan || '',
+      'Longitude':              s.lng_scan || '',
+      'Precisão GPS (m)':       s.accuracy_metros ? Math.round(s.accuracy_metros) : '',
       'Distância Endereço (m)': s.distancia_metros ? Math.round(s.distancia_metros) : '',
-      'Situação GPS': s.geo_situacao || '',
-      'Mensagem GPS': s.geo_mensagem || '',
-      'Modo Simulação': s.modo_simulacao ? 'Sim' : 'Não',
+      'Situação GPS':           s.geo_situacao || '',
+      'Mensagem GPS':           s.geo_mensagem || '',
+      'Modo Simulação':         s.modo_simulacao ? 'Sim' : 'Não',
     }))
     const hoje = new Date().toISOString().slice(0,10)
     exportCSV(flat, `entregas_${hoje}`)
   }
 
-  const totalTokens = dados?.reduce((s, r) => s + (r.tokens_creditados || 0), 0) || 0
-  const entregues   = dados?.filter(r => r.situacao === 'entregue').length || 0
-  const falhas      = dados?.filter(r => r.situacao?.startsWith('falha')).length || 0
+  const totalTokens = dadosFiltrados?.reduce((s, r) => s + (r.tokens_creditados || 0), 0) || 0
+  const entregues   = dadosFiltrados?.filter(r => r.situacao === 'entregue').length || 0
 
   return (
     <div>
@@ -364,6 +383,11 @@ function AbaRelatorios() {
           Filtros
         </div>
         <div className="flex-col gap-3">
+          <div className="field">
+            <label className="label">Número do pedido / pacote</label>
+            <input className="input" type="text" placeholder="Ex: EP000123456BR"
+              value={filtroPedido} onChange={e => setFiltroPedido(e.target.value)} />
+          </div>
           <div className="field">
             <label className="label">Data início</label>
             <input className="input" type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
@@ -383,14 +407,14 @@ function AbaRelatorios() {
         </div>
       </div>
 
-      {dados && (
+      {dadosFiltrados && (
         <>
           {/* Resumo */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 14 }}>
             {[
-              { n: dados.length, l: 'Total de scans', c: 'var(--blue)' },
-              { n: entregues,    l: 'Entregues',       c: 'var(--teal)' },
-              { n: totalTokens,  l: 'Tokens emitidos', c: 'var(--lime)' },
+              { n: dadosFiltrados.length, l: 'Total de scans', c: 'var(--blue)' },
+              { n: entregues,             l: 'Entregues',       c: 'var(--teal)' },
+              { n: totalTokens,           l: 'Tokens emitidos', c: 'var(--lime)' },
             ].map((k, i) => (
               <div key={i} className="card" style={{ textAlign: 'center', padding: '14px 8px' }}>
                 <div style={{ fontFamily: 'var(--fd)', fontSize: 26, fontWeight: 900, color: k.c }}>{k.n}</div>
@@ -399,36 +423,36 @@ function AbaRelatorios() {
             ))}
           </div>
 
-          <button className="btn btn-outline" style={{ marginBottom: 14 }} onClick={baixarCSV}>
-            ⬇ Baixar CSV ({dados.length} registros)
+          <button className="btn btn-outline" style={{ marginBottom: 14 }} onClick={baixarCSV} disabled={!dadosFiltrados.length}>
+            ⬇ Baixar CSV ({dadosFiltrados.length} registros)
           </button>
 
           {/* Preview */}
           <div className="card">
             <div style={{ fontFamily: 'var(--fd)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)', marginBottom: 12 }}>
-              Preview — últimos 10
+              Preview — {Math.min(dadosFiltrados.length, 10)} de {dadosFiltrados.length}
             </div>
-            {dados.slice(0, 10).map((s, i) => (
-              <div key={s.id} style={{
-                padding: '9px 0', borderBottom: i < Math.min(dados.length, 10) - 1 ? '1px solid var(--border)' : 'none'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--off)' }}>{s.numero_pedido}</div>
-                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                      {s.entregadores?.nome} · {fmtData(s.created_at)}
+            {dadosFiltrados.length === 0
+              ? <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--muted)', fontSize: 13 }}>Nenhum resultado encontrado</div>
+              : dadosFiltrados.slice(0, 10).map((s, i) => (
+                <div key={s.id} style={{
+                  padding: '9px 0', borderBottom: i < Math.min(dadosFiltrados.length, 10) - 1 ? '1px solid var(--border)' : 'none'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--off)' }}>{s.numero_pedido}</div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                        {s.entregadores?.nome} · {fmtData(s.created_at)}
+                      </div>
+                      <GpsLink lat={s.lat_scan} lng={s.lng_scan} accuracy={s.accuracy_metros} />
                     </div>
-                    {s.lat_scan
-                      ? <div style={{ fontSize: 10, color: 'var(--blue)' }}>📍 {s.lat_scan?.toFixed(4)},{s.lng_scan?.toFixed(4)} ±{Math.round(s.accuracy_metros||0)}m</div>
-                      : <div style={{ fontSize: 10, color: 'var(--muted)' }}>📍 GPS não capturado</div>
-                    }
+                    <span style={{ fontFamily: 'var(--fd)', fontSize: 16, fontWeight: 800, color: s.tokens_creditados > 0 ? 'var(--teal)' : 'var(--red)', flexShrink: 0, marginLeft: 8 }}>
+                      {s.tokens_creditados > 0 ? `+${s.tokens_creditados}` : '0'}
+                    </span>
                   </div>
-                  <span style={{ fontFamily: 'var(--fd)', fontSize: 16, fontWeight: 800, color: s.tokens_creditados > 0 ? 'var(--teal)' : 'var(--red)', flexShrink: 0 }}>
-                    {s.tokens_creditados > 0 ? `+${s.tokens_creditados}` : '0'}
-                  </span>
                 </div>
-              </div>
-            ))}
+              ))
+            }
           </div>
         </>
       )}
@@ -524,6 +548,14 @@ export default function Admin() {
       <div className="admin-hdr">
         <Logo size="md" />
         {feedback && <div style={{ fontSize: 11, color: 'var(--lime)', fontWeight: 600 }}>{feedback}</div>}
+        <button onClick={() => setAuth(false)} style={{
+          background: 'none', border: '1px solid var(--border)',
+          color: 'var(--muted)', cursor: 'pointer', padding: '5px 12px',
+          borderRadius: 'var(--r)', fontSize: 11, fontFamily: 'var(--fb)', fontWeight: 600,
+          flexShrink: 0
+        }}>
+          Sair
+        </button>
       </div>
 
       {/* Abas */}

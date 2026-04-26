@@ -1,22 +1,30 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { buscarEntregadorPorCPF, buscarTokens, buscarHistoricoScans } from '../lib/supabase'
+import { buscarEntregadorPorCPF, buscarTokensNaoConvertidos, buscarHistoricoScans, converterTokensEmBilhetes } from '../lib/supabase'
 import Logo from '../components/Logo'
 
-/* ── Count-up hook ── */
-function useCountUp(target, duration = 1200) {
-  const [val, setVal] = useState(0)
+/* ── Count-up animado entre dois valores ── */
+function useAnimatedValue(target, duration = 900) {
+  const [val, setVal] = useState(target)
+  const prevRef = useRef(target)
+
   useEffect(() => {
-    if (target === 0) return
+    const from = prevRef.current
+    const to = target
+    prevRef.current = target
+    if (from === to) return
     let start = null
     const step = ts => {
       if (!start) start = ts
       const prog = Math.min((ts - start) / duration, 1)
-      setVal(Math.floor(prog * target))
+      // ease out cubic
+      const ease = 1 - Math.pow(1 - prog, 3)
+      setVal(Math.round(from + (to - from) * ease))
       if (prog < 1) requestAnimationFrame(step)
     }
     requestAnimationFrame(step)
   }, [target, duration])
+
   return val
 }
 
@@ -31,12 +39,37 @@ export default function Dashboard() {
   const nav = useNavigate()
   const [entregador, setEntregador] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [tokens, setTokens] = useState(0)
+  const [tokensDisp, setTokensDisp] = useState(0)   // tokens ainda não convertidos
+  const [bilhetes,   setBilhetes]   = useState(0)   // bilhetes já gerados
   const [scans, setScans] = useState([])
+  const [convertendo, setConvertendo] = useState(false)
+  const [msgConversao, setMsgConversao] = useState('')
 
-  const bilhetes = Math.floor(tokens / 10)
-  const progPct  = Math.min((tokens % 10) / 10 * 100, 100)
-  const animTokens = useCountUp(tokens)
+  const progPct = Math.min((tokensDisp % 10) / 10 * 100, 100)
+
+  // Animação entre valores (tokens caem, bilhetes sobem)
+  const animTokens   = useAnimatedValue(tokensDisp, 800)
+  const animBilhetes = useAnimatedValue(bilhetes, 800)
+
+  async function carregarSaldo(cpf) {
+    const { tokensDisponiveis, bilhetes: qtdBilhetes } = await buscarTokensNaoConvertidos(cpf)
+    setTokensDisp(tokensDisponiveis)
+    setBilhetes(qtdBilhetes)
+  }
+
+  async function hConverter() {
+    if (tokensDisp < 10) return
+    setConvertendo(true); setMsgConversao('')
+    try {
+      const { gerados } = await converterTokensEmBilhetes(entregador.cpf)
+      setMsgConversao(`+${gerados} bilhete${gerados > 1 ? 's' : ''} gerado${gerados > 1 ? 's' : ''}!`)
+      await carregarSaldo(entregador.cpf)
+      setTimeout(() => setMsgConversao(''), 4000)
+    } catch (e) {
+      setMsgConversao('Erro ao converter. Tente novamente.')
+    }
+    setConvertendo(false)
+  }
 
   useEffect(() => {
     const cpf = localStorage.getItem('entregador_cpf')
@@ -44,9 +77,7 @@ export default function Dashboard() {
     buscarEntregadorPorCPF(cpf)
       .then(d => { if (!d) { nav('/'); return } setEntregador(d) })
       .finally(() => setLoading(false))
-
-    // Carrega tokens e histórico em paralelo
-    buscarTokens(cpf).then(t => setTokens(t))
+    carregarSaldo(cpf)
     buscarHistoricoScans(cpf).then(s => setScans(s))
   }, [])
 
@@ -108,26 +139,64 @@ export default function Dashboard() {
 
         {/* ── Token hero ── */}
         <div className="token-hero fade-up">
-          <div className="token-eyebrow">Seus Tokens</div>
-          <div className="token-number">
-            {animTokens}
-            <span className="suf">pts</span>
+
+          {/* Dois contadores, mesmo tamanho de fonte */}
+          <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'flex-start', marginBottom: 16 }}>
+            {/* Tokens */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: 10, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--lime)', marginBottom: 4 }}>Tokens</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: 56, fontWeight: 900, color: 'var(--white)', lineHeight: 1 }}>
+                {animTokens}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>disponíveis</div>
+            </div>
+
+            {/* Divisor */}
+            <div style={{ width: 1, height: 70, background: 'rgba(255,255,255,.12)', marginTop: 18, flexShrink: 0 }} />
+
+            {/* Bilhetes */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: 10, fontWeight: 700, letterSpacing: '.12em', textTransform: 'uppercase', color: 'var(--blue)', marginBottom: 4 }}>Bilhetes</div>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: 56, fontWeight: 900, color: 'var(--blue)', lineHeight: 1 }}>
+                {animBilhetes}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>gerados</div>
+            </div>
           </div>
+
+          {/* Barra de progresso */}
           <div className="prog-labels">
-            <span>{tokens % 10}/10 para próximo bilhete</span>
-            <strong>{bilhetes} bilhetes</strong>
+            <span>{tokensDisp % 10}/10 para próximo bilhete</span>
+            <strong>{10 - (tokensDisp % 10 || 10) === 10 ? 0 : 10 - (tokensDisp % 10)} faltam</strong>
           </div>
-          <div className="prog-bar">
+          <div className="prog-bar" style={{ marginBottom: tokensDisp >= 10 ? 14 : 0 }}>
             <div className="prog-fill" style={{ width: `${progPct}%` }} />
           </div>
-          {tokens >= 10 && (
-            <button className="btn btn-lime" style={{ marginTop: 16 }}>
-              Converter tokens em bilhetes
+
+          {/* Botão de conversão — aparece quando tem pelo menos 10 tokens */}
+          {tokensDisp >= 10 && (
+            <button className="btn btn-lime" onClick={hConverter} disabled={convertendo} style={{ marginTop: 4 }}>
+              {convertendo
+                ? <><div className="spinner" style={{ color: 'var(--navy)' }} /> Convertendo...</>
+                : <>🎟 Converter {Math.floor(tokensDisp / 10)} bilhete{Math.floor(tokensDisp / 10) > 1 ? 's' : ''}</>
+              }
             </button>
           )}
-          {tokens === 0 && (
-            <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5 }}>
-              Use o scanner abaixo para registrar suas entregas e acumular tokens.
+
+          {/* Feedback da conversão */}
+          {msgConversao && (
+            <div style={{
+              textAlign: 'center', marginTop: 10, fontSize: 13, fontWeight: 700,
+              color: msgConversao.startsWith('Erro') ? 'var(--red)' : 'var(--teal)',
+              animation: 'fadeUp .4s ease both'
+            }}>
+              {msgConversao}
+            </div>
+          )}
+
+          {tokensDisp === 0 && bilhetes === 0 && (
+            <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5, textAlign: 'center' }}>
+              Use o scanner para registrar entregas e acumular tokens.
             </p>
           )}
         </div>

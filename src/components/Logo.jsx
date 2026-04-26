@@ -1,4 +1,4 @@
-// Logo "Entrega+App" — mesmo padrão do cartaz
+// Logo "Entrega+App" — mesmo padrão do cartaz, "App" com p minúsculo
 export default function Logo({ size = 'md', style = {} }) {
   const sizes = {
     sm: { main: 18 },
@@ -19,7 +19,7 @@ export default function Logo({ size = 'md', style = {} }) {
       }}>+</span>
       <span style={{
         fontFamily: 'var(--fd)', fontWeight: 900, fontSize: s.main,
-        color: 'var(--blue)', letterSpacing: '-.01em', textTransform: 'uppercase'
+        color: 'var(--blue)', letterSpacing: '-.01em'
       }}>App</span>
     </span>
   )

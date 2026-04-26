@@ -93,7 +93,7 @@ export async function buscarEntregadorPorCPF(cpf) {
   return data
 }
 
-export async function cadastrarEntregador({ cpf, nome, telefone, selfieFile, plataforma }) {
+export async function cadastrarEntregador({ cpf, nome, telefone, cidade, uf, selfieFile, plataforma }) {
   const cpfLimpo = cpf.replace(/\D/g, '')
 
   // 1. Faz upload da selfie
@@ -117,6 +117,8 @@ export async function cadastrarEntregador({ cpf, nome, telefone, selfieFile, pla
       cpf: cpfLimpo,
       nome: nome.trim(),
       telefone: telefone?.replace(/\D/g, '') || null,
+      cidade: cidade?.trim() || null,
+      uf: uf || null,
       selfie_url: selfieUrl,
       plataforma: plataforma || 'web',
       status: 'ativo'
@@ -232,4 +234,76 @@ export async function buscarRelatorioEntregas({ dataInicio, dataFim, apenasAtivo
   const { data, error } = await query
   if (error) throw new Error(error.message)
   return data
+}
+
+// ─── BILHETES ─────────────────────────────────────────────────────────────────
+
+export async function buscarBilhetes(cpf) {
+  const cpfLimpo = cpf.replace(/\D/g, '')
+  const { data, error } = await supabase
+    .from('bilhetes')
+    .select('*')
+    .eq('cpf_entregador', cpfLimpo)
+    .order('created_at', { ascending: false })
+  if (error) return []
+  return data || []
+}
+
+export async function buscarTokensNaoConvertidos(cpf) {
+  const cpfLimpo = cpf.replace(/\D/g, '')
+
+  // Total de tokens liberados
+  const { data: scansData } = await supabase
+    .from('scans')
+    .select('tokens_creditados')
+    .eq('cpf_entregador', cpfLimpo)
+    .eq('status', 'liberado')
+  const totalTokens = (scansData || []).reduce((s, r) => s + (r.tokens_creditados || 0), 0)
+
+  // Total de tokens já convertidos em bilhetes
+  const { data: bilhetesData } = await supabase
+    .from('bilhetes')
+    .select('tokens_usados')
+    .eq('cpf_entregador', cpfLimpo)
+  const tokensConvertidos = (bilhetesData || []).reduce((s, r) => s + (r.tokens_usados || 0), 0)
+
+  return {
+    tokensDisponiveis: totalTokens - tokensConvertidos,
+    tokensConvertidos,
+    totalTokens,
+    bilhetes: bilhetesData?.length || 0
+  }
+}
+
+export async function converterTokensEmBilhetes(cpf) {
+  const cpfLimpo = cpf.replace(/\D/g, '')
+
+  // Busca saldo atual
+  const { tokensDisponiveis, bilhetes: qtdAtual } = await buscarTokensNaoConvertidos(cpfLimpo)
+
+  if (tokensDisponiveis < 10) throw new Error('Tokens insuficientes. Você precisa de pelo menos 10 tokens.')
+
+  const qtdNovos = Math.floor(tokensDisponiveis / 10)
+  const ciclo = gerarCicloAtual()
+
+  // Gera os bilhetes
+  const novos = Array.from({ length: qtdNovos }, (_, i) => ({
+    cpf_entregador: cpfLimpo,
+    numero: String(qtdAtual + i + 1).padStart(6, '0'),
+    ciclo,
+    tokens_usados: 10
+  }))
+
+  const { error } = await supabase.from('bilhetes').insert(novos)
+  if (error) throw new Error(error.message)
+
+  return { gerados: qtdNovos, total: qtdAtual + qtdNovos }
+}
+
+function gerarCicloAtual() {
+  const now = new Date()
+  const ano = now.getFullYear()
+  const mes = now.getMonth() + 1
+  const trim = Math.ceil(mes / 3)
+  return `${ano}-T${trim}`
 }
