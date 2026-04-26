@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { buscarEntregadorPorCPF } from '../lib/supabase'
+import { buscarEntregadorPorCPF, buscarTokens, buscarHistoricoScans } from '../lib/supabase'
 import Logo from '../components/Logo'
 
 /* ── Count-up hook ── */
@@ -31,9 +31,10 @@ export default function Dashboard() {
   const nav = useNavigate()
   const [entregador, setEntregador] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [tokens, setTokens] = useState(0)
+  const [scans, setScans] = useState([])
 
-  const tokens   = 0
-  const bilhetes = 0
+  const bilhetes = Math.floor(tokens / 10)
   const progPct  = Math.min((tokens % 10) / 10 * 100, 100)
   const animTokens = useCountUp(tokens)
 
@@ -43,6 +44,10 @@ export default function Dashboard() {
     buscarEntregadorPorCPF(cpf)
       .then(d => { if (!d) { nav('/'); return } setEntregador(d) })
       .finally(() => setLoading(false))
+
+    // Carrega tokens e histórico em paralelo
+    buscarTokens(cpf).then(t => setTokens(t))
+    buscarHistoricoScans(cpf).then(s => setScans(s))
   }, [])
 
   if (loading) return (
@@ -176,11 +181,40 @@ export default function Dashboard() {
         {/* ── Histórico ── */}
         <div className="card fade-up-4" style={{ marginTop: 6 }}>
           <div style={{ fontFamily: 'var(--fd)', fontSize: 14, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 14 }}>
-            Histórico
+            Histórico de Entregas
           </div>
-          <div style={{ textAlign: 'center', padding: '22px 0', color: 'var(--muted)', fontSize: 13 }}>
-            Nenhuma entrega registrada ainda
-          </div>
+          {scans.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '22px 0', color: 'var(--muted)', fontSize: 13 }}>
+              Nenhuma entrega registrada ainda
+            </div>
+          ) : (
+            <div className="flex-col" style={{ gap: 0 }}>
+              {scans.map((s, i) => {
+                const corStatus = s.tokens_creditados > 0 ? 'var(--teal)' : 'var(--red)'
+                const data = new Date(s.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                return (
+                  <div key={s.id} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '11px 0',
+                    borderBottom: i < scans.length - 1 ? '1px solid var(--border)' : 'none'
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--off)', marginBottom: 2 }}>
+                        {s.numero_pedido}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                        {data} · {s.situacao?.replace(/_/g, ' ')}
+                      </div>
+                    </div>
+                    <div style={{ fontFamily: 'var(--fd)', fontSize: 18, fontWeight: 800, color: corStatus }}>
+                      {s.tokens_creditados > 0 ? `+${s.tokens_creditados}` : '0'}
+                      <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--muted)', marginLeft: 3 }}>tok</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         <button className="btn btn-ghost mt-6"
