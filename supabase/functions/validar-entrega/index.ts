@@ -1,5 +1,6 @@
 // supabase/functions/validar-entrega/index.ts
-// Módulo 2 — Validação de entregas via Intelipost + geolocalização OpenStreetMap
+// Módulo 2 — Fluxo pendente: scan aceito apenas em OUT_FOR_DELIVERY/IN_TRANSIT
+// Tokens creditados após confirmação do status final na Intelipost
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -9,12 +10,34 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
-// ── Raios adaptativos (metros) ─────────────────────────────────────────────
-const RAIO_RESIDENCIAL = 200
-const RAIO_CEP_UNICO   = 500
-const RAIO_RURAL       = 1000
+// ── Status que aceitam o scan (pacote na rota, custódia transferida) ────────
+const STATUS_ACEITOS = [
+  'OUT_FOR_DELIVERY',
+  'IN_TRANSIT',
+  'SAIU_PARA_ENTREGA',
+  'EM_ROTA',
+  'EM_TRANSITO',
+]
 
-// ── Distância em metros entre dois pontos GPS ──────────────────────────────
+// ── Status finais que encerram o ciclo ──────────────────────────────────────
+const STATUS_ENTREGUE = ['DELIVERED', 'ENTREGUE']
+const STATUS_FALHA    = ['DELIVERY_FAILED', 'DELIVERY_REFUSED', 'FALHA', 'RECUSADO']
+const STATUS_CANCELADO= ['CANCELLED', 'CANCELADO', 'LOST', 'STOLEN']
+
+// ── Mensagens amigáveis para status rejeitados ───────────────────────────────
+const MSG_STATUS: Record<string, string> = {
+  NEW:                  'Pedido recém criado — ainda não saiu para entrega.',
+  READY_FOR_SHIPMENT:   'Pedido pronto para envio — aguardando retirada.',
+  HANDLING:             'Em manuseio no armazém — ainda não transferido.',
+  SHIPPED:              'Pedido despachado, aguardando transferência para rota.',
+  DELIVERED:            'Este pedido já foi entregue e os tokens já foram processados.',
+  DELIVERY_FAILED:      'Este pedido já teve falha registrada e os tokens já foram processados.',
+  CANCELLED:            'Pedido cancelado — não gera tokens.',
+  LOST:                 'Pedido marcado como perdido — não gera tokens.',
+  STOLEN:               'Pedido marcado como roubado — não gera tokens.',
+}
+
+// ── Distância em metros ──────────────────────────────────────────────────────
 function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000
   const dLat = (lat2 - lat1) * Math.PI / 180
@@ -23,92 +46,96 @@ function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: number)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
 
-// ── Geocodifica endereço via OpenStreetMap Nominatim ──────────────────────
-async function geocodificar(endereco: string): Promise<{ lat: number, lng: number, tipo: string } | null> {
+// ── Geocodifica endereço via OpenStreetMap ───────────────────────────────────
+async function geocodificar(endereco: string) {
   try {
     const q = encodeURIComponent(endereco)
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`, {
-      headers: { "User-Agent": "CieloEntregaPlus/2.0" }
-    })
+    const r = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${q}&format=json&limit=1`,
+      { headers: { "User-Agent": "CieloEntregaPlus/2.0" } }
+    )
     const data = await r.json()
-    if (!data || data.length === 0) return null
-    const tipo = data[0].type || 'residential'
-    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), tipo }
-  } catch {
-    return null
-  }
+    if (!data?.length) return null
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), tipo: data[0].type || 'residential' }
+  } catch { return null }
 }
 
-// ── Define raio adaptativo pelo tipo de local ──────────────────────────────
 function raioAdaptativo(tipo: string): number {
-  if (['residential','house','apartments','building'].includes(tipo)) return RAIO_RESIDENCIAL
-  if (['postcode','suburb','neighbourhood'].includes(tipo)) return RAIO_CEP_UNICO
-  return RAIO_RURAL
+  if (['residential','house','apartments','building'].includes(tipo)) return 200
+  if (['postcode','suburb','neighbourhood'].includes(tipo)) return 500
+  return 1000
 }
 
-// ── Consulta Intelipost ────────────────────────────────────────────────────
+// ── Consulta Intelipost (completa ou status) ─────────────────────────────────
 async function consultarIntelipost(numeroPedido: string, apiKey: string, baseUrl: string) {
-  const url = `${baseUrl}/shipment_order/${numeroPedido}`
-  const r = await fetch(url, {
+  // Tenta API completa primeiro
+  const r = await fetch(`${baseUrl}/shipment_order/${numeroPedido}`, {
     headers: { "api-key": apiKey, "Content-Type": "application/json" }
   })
-  if (!r.ok) {
-    // Fallback: consulta de status simplificado
-    const r2 = await fetch(`${baseUrl}/shipment_order/read_status/${numeroPedido}`, {
-      headers: { "api-key": apiKey }
-    })
-    if (!r2.ok) throw new Error(`Intelipost: pedido ${numeroPedido} não encontrado`)
-    const d2 = await r2.json()
-    return { status: d2.content?.shipment_order_volume_state, endereco: null, cpfEntregador: null }
+  if (r.ok) {
+    const d = await r.json()
+    const content = d.content
+    const vol = content?.shipment_order_volume_array?.[0]
+    const end = content?.end_customer
+    return {
+      status: (vol?.shipment_order_volume_state || content?.shipment_order_status || '').toUpperCase(),
+      endereco: end ? `${end.street}, ${end.number}, ${end.city}, ${end.state}, Brasil` : null,
+    }
   }
-  const d = await r.json()
-  const content = d.content
-  const vol = content?.shipment_order_volume_array?.[0]
-  const end = content?.end_customer
-  const endereco = end
-    ? `${end.street}, ${end.number}, ${end.city}, ${end.state}, Brasil`
-    : null
-  const cpfEntregador = content?.carrier?.driver?.federal_tax_id?.replace(/\D/g,'') || null
+  // Fallback: API de status
+  const r2 = await fetch(`${baseUrl}/shipment_order/read_status/${numeroPedido}`, {
+    headers: { "api-key": apiKey }
+  })
+  if (!r2.ok) throw new Error(`Pedido ${numeroPedido} não encontrado na Intelipost`)
+  const d2 = await r2.json()
   return {
-    status: vol?.shipment_order_volume_state || content?.shipment_order_status,
-    endereco,
-    cpfEntregador,
+    status: (d2.content?.shipment_order_volume_state || '').toUpperCase(),
+    endereco: null,
   }
 }
 
-// ── Mapeia status Intelipost → tokens/situação ─────────────────────────────
-function calcularTokens(status: string, geoSituacao: string): { tokens: number, situacao: string, statusToken: string } {
-  const s = status?.toUpperCase() || ''
-
-  if (['DELIVERED','ENTREGUE'].some(x => s.includes(x))) {
-    return { tokens: 10, situacao: 'entregue', statusToken: 'liberado' }
+// ── Calcula tokens após confirmação do status final ──────────────────────────
+async function calcularTokensFinais(
+  status: string,
+  endereco: string | null,
+  lat: number | null,
+  lng: number | null
+) {
+  // Entregue: 10 tokens sem verificar GPS
+  if (STATUS_ENTREGUE.some(s => status.includes(s))) {
+    return { tokens: 10, situacao: 'entregue', geoSituacao: 'nao_verificada', geoMsg: '' }
   }
 
-  if (['DELIVERY_FAILED','DELIVERY_REFUSED','FALHA','RECUSADO'].some(x => s.includes(x))) {
-    if (geoSituacao === 'sem_geocod') {
-      return { tokens: 10, situacao: 'falha_sem_geocod', statusToken: 'liberado' }
+  // Falha: verifica geolocalização
+  if (STATUS_FALHA.some(s => status.includes(s))) {
+    if (!lat || !lng) {
+      return { tokens: 10, situacao: 'falha_sem_geocod', geoSituacao: 'sem_gps', geoMsg: 'GPS não capturado no momento do scan' }
     }
-    if (geoSituacao === 'dentro_raio') {
-      return { tokens: 4, situacao: 'falha_dentro_raio', statusToken: 'liberado' }
+    if (!endereco) {
+      return { tokens: 10, situacao: 'falha_sem_geocod', geoSituacao: 'sem_geocod', geoMsg: 'Endereço não geocodificável (falha cadastral)' }
     }
-    return { tokens: 0, situacao: 'falha_fora_raio', statusToken: 'cancelado' }
+    const geocod = await geocodificar(endereco)
+    if (!geocod) {
+      return { tokens: 10, situacao: 'falha_sem_geocod', geoSituacao: 'sem_geocod', geoMsg: 'Endereço não geocodificável (falha cadastral)' }
+    }
+    const raio = raioAdaptativo(geocod.tipo)
+    const dist = distanciaMetros(lat, lng, geocod.lat, geocod.lng)
+    if (dist <= raio) {
+      return { tokens: 4, situacao: 'falha_dentro_raio', geoSituacao: 'dentro_raio', geoMsg: `${Math.round(dist)}m do endereço (raio: ${raio}m)` }
+    }
+    return { tokens: 0, situacao: 'falha_fora_raio', geoSituacao: 'fora_raio', geoMsg: `${Math.round(dist)}m do endereço (raio: ${raio}m) — fora do raio` }
   }
 
-  if (['CANCELLED','CANCELADO','LOST','STOLEN'].some(x => s.includes(x))) {
-    return { tokens: 0, situacao: 'cancelado', statusToken: 'cancelado' }
-  }
-
-  // Status em trânsito: scan prematuro — aceita custódia
-  return { tokens: 0, situacao: 'em_transito', statusToken: 'reservado' }
+  // Cancelado
+  return { tokens: 0, situacao: 'cancelado', geoSituacao: 'nao_aplicavel', geoMsg: '' }
 }
 
-// ── Handler principal ──────────────────────────────────────────────────────
+// ── Handler principal ────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
     const { numeroPedido, cpf, lat, lng, accuracy } = await req.json()
-
     if (!numeroPedido || !cpf) {
       return new Response(JSON.stringify({ erro: "numeroPedido e cpf são obrigatórios" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -126,94 +153,95 @@ serve(async (req) => {
       .select('api_key, base_url, modo_simulacao')
       .single()
 
-    const apiKey = ipConfig?.api_key || Deno.env.get("INTELIPOST_API_KEY") || ""
+    const apiKey  = ipConfig?.api_key || Deno.env.get("INTELIPOST_API_KEY") || ""
     const baseUrl = ipConfig?.base_url || "https://api.intelipost.com.br/api/v1"
     const modoSim = ipConfig?.modo_simulacao ?? true
+    const cpfLimpo = cpf.replace(/\D/g, '')
 
-    // 2. Anti-fraude: verifica scan duplicado
+    // 2. Anti-fraude: scan duplicado?
     const { data: scanExist } = await supabase
       .from('scans')
-      .select('id, status')
+      .select('id, status, pendente_verificacao')
       .eq('numero_pedido', numeroPedido)
-      .eq('cpf_entregador', cpf.replace(/\D/g,''))
-      .single()
+      .eq('cpf_entregador', cpfLimpo)
+      .maybeSingle()
 
-    if (scanExist && scanExist.status !== 'reservado') {
-      return new Response(JSON.stringify({
-        erro: "Este pedido já foi registrado anteriormente.",
-        numeroPedido, statusIntelipost: scanExist.status,
-        tokens: 0, situacao: 'duplicado'
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })
+    if (scanExist) {
+      if (scanExist.pendente_verificacao) {
+        return new Response(JSON.stringify({
+          numeroPedido,
+          statusIntelipost: 'PENDENTE',
+          tokens: 0,
+          situacao: 'aguardando_confirmacao',
+          mensagem: 'Este pedido já foi escaneado e está aguardando a confirmação do status na Intelipost. Os tokens serão creditados em breve.',
+          pendente: true,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })
+      }
+      if (scanExist.status !== 'reservado') {
+        return new Response(JSON.stringify({
+          erro: 'Este pedido já foi processado anteriormente.',
+          numeroPedido, tokens: 0, situacao: 'duplicado'
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })
+      }
     }
 
     // 3. Consulta Intelipost (ou simula)
-    let inteliData: any
+    let inteliData: { status: string, endereco: string | null }
+
     if (modoSim || !apiKey) {
-      // Modo simulação — retorna entrega confirmada para testes
-      inteliData = {
-        status: 'DELIVERED',
-        endereco: 'Rua Exemplo, 100, São Paulo, SP, Brasil',
-        cpfEntregador: cpf.replace(/\D/g,'')
-      }
+      // Modo simulação: simula OUT_FOR_DELIVERY para aceitar o scan
+      inteliData = { status: 'OUT_FOR_DELIVERY', endereco: 'Rua Exemplo, 100, São Paulo, SP, Brasil' }
     } else {
       inteliData = await consultarIntelipost(numeroPedido, apiKey, baseUrl)
     }
 
-    // 4. Geolocalização (apenas para falhas)
-    let geoSituacao = 'sem_gps'
-    let geoOk = false
-    let geoMsg = ''
-    let distancia: number | null = null
+    const status = inteliData.status
 
-    const isFalha = ['DELIVERY_FAILED','DELIVERY_REFUSED','FALHA','RECUSADO']
-      .some(x => inteliData.status?.toUpperCase().includes(x))
+    // 4. Verifica se o status aceita o scan
+    const statusAceito = STATUS_ACEITOS.some(s => status.includes(s))
 
-    if (isFalha) {
-      if (!lat || !lng) {
-        geoSituacao = 'sem_gps'
-        geoMsg = 'GPS não capturado'
-      } else if (!inteliData.endereco) {
-        geoSituacao = 'sem_geocod'
-        geoMsg = 'Endereço não geocodificável (falha cadastral)'
-      } else {
-        const geocod = await geocodificar(inteliData.endereco)
-        if (!geocod) {
-          geoSituacao = 'sem_geocod'
-          geoMsg = 'Endereço não geocodificável (falha cadastral)'
-        } else {
-          const raio = raioAdaptativo(geocod.tipo)
-          distancia = distanciaMetros(lat, lng, geocod.lat, geocod.lng)
-          if (distancia <= raio) {
-            geoSituacao = 'dentro_raio'
-            geoOk = true
-            geoMsg = `${Math.round(distancia)}m do endereço (raio: ${raio}m)`
-          } else {
-            geoSituacao = 'fora_raio'
-            geoMsg = `${Math.round(distancia)}m do endereço (raio: ${raio}m) — fora do raio`
-          }
-        }
-      }
+    if (!statusAceito) {
+      // Status não permite scan — retorna mensagem explicativa
+      const msg = MSG_STATUS[status] || `Status "${status}" não permite registrar a entrega agora.`
+      return new Response(JSON.stringify({
+        numeroPedido,
+        statusIntelipost: status,
+        tokens: 0,
+        situacao: 'status_invalido',
+        mensagem: msg,
+        rejeitado: true,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })
     }
 
-    // 5. Calcula tokens
-    const { tokens, situacao, statusToken } = calcularTokens(inteliData.status, geoSituacao)
+    // 5. Status aceito → registra scan como PENDENTE
+    const agora = new Date()
+    const expira = new Date(agora.getTime() + 24 * 60 * 60 * 1000) // 24h
+    const proxima = new Date(agora.getTime() + 30 * 60 * 1000)     // 30min
 
-    // 6. Registra scan no banco
-    const cpfLimpo = cpf.replace(/\D/g,'')
     const scanPayload = {
-      numero_pedido: numeroPedido,
-      cpf_entregador: cpfLimpo,
-      status_intelipost: inteliData.status,
-      status: statusToken,
-      tokens_creditados: tokens,
-      situacao,
-      lat_scan: lat || null,
-      lng_scan: lng || null,
-      accuracy_metros: accuracy || null,
-      distancia_metros: distancia,
-      geo_situacao: geoSituacao,
-      geo_mensagem: geoMsg,
-      modo_simulacao: modoSim || !apiKey,
+      numero_pedido:           numeroPedido,
+      cpf_entregador:          cpfLimpo,
+      status_intelipost:       status,
+      status:                  'reservado',
+      tokens_creditados:       0,
+      situacao:                'aguardando_confirmacao',
+      lat_scan:                lat || null,
+      lng_scan:                lng || null,
+      accuracy_metros:         accuracy || null,
+      distancia_metros:        null,
+      geo_situacao:            lat ? 'capturado' : 'sem_gps',
+      geo_mensagem:            lat ? `GPS capturado ±${Math.round(accuracy || 0)}m` : 'GPS não capturado',
+      modo_simulacao:          modoSim || !apiKey,
+      pendente_verificacao:    true,
+      tentativas_verificacao:  0,
+      proxima_verificacao:     proxima.toISOString(),
+      expira_em:               expira.toISOString(),
+      // Armazena endereço para uso na verificação posterior
+      geo_mensagem:            JSON.stringify({
+        gpsMsg:   lat ? `GPS capturado ±${Math.round(accuracy || 0)}m` : 'sem_gps',
+        endereco: inteliData.endereco,
+        lat, lng
+      }),
     }
 
     if (scanExist) {
@@ -224,12 +252,15 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       numeroPedido,
-      statusIntelipost: inteliData.status,
-      tokens,
-      situacao,
-      geoOk,
-      geoMsg,
-      mensagem: modoSim ? '⚠️ Modo simulação ativo' : undefined,
+      statusIntelipost: status,
+      tokens: 0,
+      situacao: 'aguardando_confirmacao',
+      pendente: true,
+      mensagem: modoSim
+        ? '⚠️ Modo simulação — scan registrado como pendente'
+        : 'Entrega registrada! Os tokens serão creditados após a confirmação do status na Intelipost (pode levar até 30 minutos).',
+      gpsCapturado: !!lat,
+      gpsMsg: lat ? `GPS capturado · precisão ±${Math.round(accuracy || 0)}m` : 'GPS não capturado',
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
   } catch (e) {

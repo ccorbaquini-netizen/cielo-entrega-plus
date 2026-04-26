@@ -325,3 +325,121 @@ function gerarCicloAtual() {
   const trim = Math.ceil(mes / 3)
   return `${ano}-T${trim}`
 }
+
+// ─── SORTEIOS ─────────────────────────────────────────────────────────────────
+
+// Retorna ciclo atual no formato "2025-T2" ou "2025-M04"
+export function cicloAtual(tipo = 'trimestral') {
+  const now = new Date()
+  const ano = now.getFullYear()
+  const mes = now.getMonth() + 1
+  if (tipo === 'mensal') return `${ano}-M${String(mes).padStart(2,'0')}`
+  const trim = Math.ceil(mes / 3)
+  return `${ano}-T${trim}`
+}
+
+// Retorna início/fim de um período em ISO
+function periodoAtivo(meses) {
+  const now = new Date()
+  const inicio = new Date(now)
+  inicio.setMonth(inicio.getMonth() - meses)
+  inicio.setHours(0,0,0,0)
+  return inicio.toISOString()
+}
+
+// Bilhetes por ciclo — resumo para o admin
+export async function buscarBilhetesPorCiclo() {
+  const { data, error } = await supabase
+    .from('bilhetes')
+    .select(`
+      id, numero, ciclo, tokens_usados, created_at, cpf_entregador,
+      entregadores!inner(nome, cpf, cidade, uf, telefone)
+    `)
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  // Agrupa por ciclo
+  const porCiclo = (data || []).reduce((acc, b) => {
+    if (!acc[b.ciclo]) acc[b.ciclo] = []
+    acc[b.ciclo].push(b)
+    return acc
+  }, {})
+
+  return porCiclo
+}
+
+// Elegíveis por tipo de sorteio
+export async function buscarElegiveis(tipo) {
+  // 1. Busca bilhetes no ciclo relevante
+  let filtroCiclo = null
+  let filtroAtivo = null // data mínima de último scan para semestral/grande prêmio
+
+  const now = new Date()
+  const ano = now.getFullYear()
+  const mes = now.getMonth() + 1
+  const trim = Math.ceil(mes / 3)
+
+  if (tipo === 'mensal') {
+    filtroCiclo = `${ano}-T${trim}` // bilhetes do trimestre atual (inclui mês)
+  } else if (tipo === 'trimestral') {
+    filtroCiclo = `${ano}-T${trim}`
+  } else if (tipo === 'semestral' || tipo === 'grande_premio') {
+    // Bilhetes do semestre atual (2 trimestres)
+    const trimAnterior = trim === 1
+      ? { ano: ano - 1, trim: 4 }
+      : { ano, trim: trim - 1 }
+    filtroCiclo = [`${ano}-T${trim}`, `${trimAnterior.ano}-T${trimAnterior.trim}`]
+    // Ativo nos últimos 2 meses
+    filtroAtivo = periodoAtivo(2)
+  }
+
+  // Busca bilhetes no(s) ciclo(s)
+  let queryBilhetes = supabase
+    .from('bilhetes')
+    .select(`
+      cpf_entregador, numero, ciclo, created_at,
+      entregadores!inner(nome, cpf, cidade, uf, telefone)
+    `)
+
+  if (Array.isArray(filtroCiclo)) {
+    queryBilhetes = queryBilhetes.in('ciclo', filtroCiclo)
+  } else if (filtroCiclo) {
+    queryBilhetes = queryBilhetes.eq('ciclo', filtroCiclo)
+  }
+
+  const { data: bilhetes, error: errB } = await queryBilhetes
+  if (errB) throw new Error(errB.message)
+
+  // Se semestral/grande prêmio, filtra por atividade recente
+  let cpfsAtivos = null
+  if (filtroAtivo) {
+    const { data: scansAtivos } = await supabase
+      .from('scans')
+      .select('cpf_entregador')
+      .gte('created_at', filtroAtivo)
+      .eq('status', 'liberado')
+    cpfsAtivos = new Set((scansAtivos || []).map(s => s.cpf_entregador))
+  }
+
+  // Agrupa por entregador
+  const porEntregador = (bilhetes || []).reduce((acc, b) => {
+    const cpf = b.cpf_entregador
+    if (!acc[cpf]) {
+      acc[cpf] = {
+        cpf,
+        nome: b.entregadores?.nome || '',
+        cidade: b.entregadores?.cidade || '',
+        uf: b.entregadores?.uf || '',
+        telefone: b.entregadores?.telefone || '',
+        bilhetes: [],
+        elegivel: cpfsAtivos ? cpfsAtivos.has(cpf) : true
+      }
+    }
+    acc[cpf].bilhetes.push(b.numero)
+    return acc
+  }, {})
+
+  return Object.values(porEntregador)
+    .filter(e => e.elegivel)
+    .sort((a, b) => b.bilhetes.length - a.bilhetes.length)
+}

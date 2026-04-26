@@ -301,45 +301,89 @@ export default function Scanner() {
 
         {/* ── SUCCESS ── */}
         {estado === ST.SUCCESS && resultado && (() => {
-          const info = getTokenLabel(resultado.tokens, resultado.situacao)
+          const isPendente  = resultado.pendente
+          const isRejeitado = resultado.rejeitado
+          const corPrincipal = isPendente ? 'var(--blue)' : resultado.tokens > 0 ? 'var(--teal)' : 'var(--red)'
+
           return (
             <div className="fade-up" style={{ paddingTop: 20 }}>
               {/* Card de resultado */}
               <div style={{
-                background: resultado.tokens > 0
+                background: isPendente
+                  ? 'linear-gradient(135deg, var(--navy-2), var(--navy-3))'
+                  : isRejeitado
+                  ? 'rgba(255,61,87,.08)'
+                  : resultado.tokens > 0
                   ? 'linear-gradient(135deg, var(--navy-2), var(--navy-3))'
                   : 'rgba(255,61,87,.08)',
-                border: `1px solid ${resultado.tokens > 0 ? 'rgba(197,211,42,.2)' : 'rgba(255,61,87,.3)'}`,
+                border: `1px solid ${isPendente ? 'rgba(0,174,239,.3)' : isRejeitado ? 'rgba(255,61,87,.3)' : resultado.tokens > 0 ? 'rgba(197,211,42,.2)' : 'rgba(255,61,87,.3)'}`,
                 borderRadius: 'var(--r3)', padding: '28px 22px',
                 textAlign: 'center', marginBottom: 16
               }}>
+                {/* Ícone */}
                 <div style={{
                   width: 64, height: 64, borderRadius: '50%',
-                  background: resultado.tokens > 0 ? 'rgba(0,201,167,.15)' : 'rgba(255,61,87,.15)',
-                  border: `2px solid ${resultado.tokens > 0 ? 'var(--teal)' : 'var(--red)'}`,
+                  background: isPendente ? 'rgba(0,174,239,.15)' : isRejeitado ? 'rgba(255,61,87,.15)' : resultado.tokens > 0 ? 'rgba(0,201,167,.15)' : 'rgba(255,61,87,.15)',
+                  border: `2px solid ${corPrincipal}`,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto 16px',
-                  color: resultado.tokens > 0 ? 'var(--teal)' : 'var(--red)'
+                  margin: '0 auto 16px', fontSize: 26
                 }}>
-                  {resultado.tokens > 0 ? <IcoCheck /> : <IcoX />}
+                  {isPendente ? '⏳' : isRejeitado ? '🚫' : resultado.tokens > 0 ? '✅' : '❌'}
                 </div>
 
-                <div style={{ fontFamily: 'var(--fd)', fontSize: 13, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: info.cor, marginBottom: 4 }}>
-                  {info.label}
+                {/* Título */}
+                <div style={{ fontFamily: 'var(--fd)', fontSize: 13, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: corPrincipal, marginBottom: 8 }}>
+                  {isPendente  ? 'Entrega Registrada'
+                  : isRejeitado ? 'Scan Não Permitido'
+                  : resultado.tokens > 0 ? 'Tokens Creditados'
+                  : 'Sem Tokens'}
                 </div>
 
-                {resultado.tokens > 0 && (
+                {/* Mensagem principal */}
+                {isPendente && (
                   <>
-                    <div style={{ fontFamily: 'var(--fd)', fontSize: 64, fontWeight: 900, color: 'var(--white)', lineHeight: 1, margin: '8px 0 4px' }}>
-                      +{resultado.tokens}
+                    <p style={{ fontSize: 14, color: 'var(--off)', lineHeight: 1.65, marginBottom: 16 }}>
+                      {resultado.mensagem}
+                    </p>
+                    {/* GPS status */}
+                    <div style={{
+                      display: 'inline-block', fontSize: 12,
+                      color: resultado.gpsCapturado ? 'var(--teal)' : 'var(--muted)',
+                      background: resultado.gpsCapturado ? 'rgba(0,201,167,.1)' : 'rgba(255,255,255,.05)',
+                      border: `1px solid ${resultado.gpsCapturado ? 'rgba(0,201,167,.3)' : 'var(--border)'}`,
+                      padding: '6px 14px', borderRadius: 100
+                    }}>
+                      📍 {resultado.gpsMsg}
                     </div>
-                    <div style={{ fontFamily: 'var(--fd)', fontSize: 16, fontWeight: 600, color: info.cor }}>
-                      tokens
+                    {/* Info sobre tokens pendentes */}
+                    <div style={{
+                      marginTop: 16, padding: '12px 14px',
+                      background: 'rgba(0,174,239,.08)', borderRadius: 'var(--r)',
+                      border: '1px solid rgba(0,174,239,.2)'
+                    }}>
+                      <p style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>
+                        Os tokens serão creditados automaticamente assim que o status da entrega for atualizado na Intelipost. Verifique seu painel em alguns minutos.
+                      </p>
                     </div>
                   </>
                 )}
 
-                {resultado.tokens === 0 && (
+                {isRejeitado && (
+                  <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.65 }}>
+                    {resultado.mensagem}
+                  </p>
+                )}
+
+                {!isPendente && !isRejeitado && resultado.tokens > 0 && (
+                  <>
+                    <div style={{ fontFamily: 'var(--fd)', fontSize: 64, fontWeight: 900, color: 'var(--white)', lineHeight: 1, margin: '8px 0 4px' }}>
+                      +{resultado.tokens}
+                    </div>
+                    <div style={{ fontFamily: 'var(--fd)', fontSize: 16, fontWeight: 600, color: 'var(--teal)' }}>tokens</div>
+                  </>
+                )}
+
+                {!isPendente && !isRejeitado && resultado.tokens === 0 && (
                   <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 8, lineHeight: 1.5 }}>
                     {resultado.mensagem || 'Sem tokens para esta entrega.'}
                   </p>
@@ -347,29 +391,31 @@ export default function Scanner() {
               </div>
 
               {/* Detalhes */}
-              <div className="card" style={{ marginBottom: 16 }}>
-                <div style={{ fontFamily: 'var(--fd)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)', marginBottom: 12 }}>
-                  Detalhes
-                </div>
-                {[
-                  { k: 'Pedido', v: resultado.numeroPedido },
-                  { k: 'Status Intelipost', v: resultado.statusIntelipost },
-                  { k: 'GPS', v: resultado.geoOk ? '✅ Presença confirmada' : resultado.geoMsg || '—' },
-                  { k: 'Tokens creditados', v: `${resultado.tokens} tokens` },
-                ].map((r, i) => (
-                  <div key={i} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-                    padding: '8px 0', borderBottom: i < 3 ? '1px solid var(--border)' : 'none'
-                  }}>
-                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>{r.k}</span>
-                    <span style={{ fontSize: 12, color: 'var(--off)', fontWeight: 600, textAlign: 'right', maxWidth: '55%' }}>{r.v}</span>
+              {!isRejeitado && (
+                <div className="card" style={{ marginBottom: 16 }}>
+                  <div style={{ fontFamily: 'var(--fd)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)', marginBottom: 12 }}>
+                    Detalhes
                   </div>
-                ))}
-              </div>
+                  {[
+                    { k: 'Pedido',           v: resultado.numeroPedido },
+                    { k: 'Status Intelipost',v: resultado.statusIntelipost },
+                    { k: 'GPS',              v: resultado.gpsMsg || (resultado.geoOk ? '✅ Presença confirmada' : '—') },
+                    { k: 'Situação',         v: isPendente ? '⏳ Aguardando confirmação' : resultado.situacao },
+                  ].map((r, i) => (
+                    <div key={i} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                      padding: '8px 0', borderBottom: i < 3 ? '1px solid var(--border)' : 'none'
+                    }}>
+                      <span style={{ fontSize: 12, color: 'var(--muted)' }}>{r.k}</span>
+                      <span style={{ fontSize: 12, color: 'var(--off)', fontWeight: 600, textAlign: 'right', maxWidth: '55%' }}>{r.v}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <button className="btn btn-lime" onClick={reiniciar}>
-                  Escanear próxima entrega
+                  {isPendente || isRejeitado ? 'Escanear outro pedido' : 'Escanear próxima entrega'}
                 </button>
                 <button className="btn btn-outline" onClick={() => nav('/painel')}>
                   Ir para o painel

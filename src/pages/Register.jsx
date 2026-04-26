@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cadastrarEntregador, buscarEntregadorPorCPF } from '../lib/supabase'
 import { detectarPlataforma } from '../hooks/usePWAInstall'
+import PWAInstallBanner from '../components/PWAInstallBanner'
 
 /* ── CPF ── */
 function validarCPF(cpf) {
@@ -307,18 +308,16 @@ export default function Register() {
             <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 6 }}>
               Cadastro concluído,
             </p>
-            <p style={{ fontFamily: 'var(--fd)', fontSize: 20, fontWeight: 800, color: 'var(--lime)', marginBottom: 28, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            <p style={{ fontFamily: 'var(--fd)', fontSize: 20, fontWeight: 800, color: 'var(--lime)', marginBottom: 24, textTransform: 'uppercase', letterSpacing: '.04em' }}>
               {nome.split(' ')[0]}!
             </p>
 
-            <div className="alert alert-info" style={{ textAlign: 'left', marginBottom: 24 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-              </svg>
-              <span>Adicione o Cielo Entrega+ à tela inicial do celular para acesso rápido e notificações de sorteios.</span>
+            {/* Banner de instalação PWA — Android ou iOS */}
+            <div style={{ textAlign: 'left' }}>
+              <PWAInstallBanner onInstalado={() => {}} />
             </div>
 
-            <button className="btn btn-lime" onClick={() => nav('/painel')}>
+            <button className="btn btn-lime" style={{ marginTop: 20 }} onClick={() => nav('/painel')}>
               Ir para meu painel <ChevR />
             </button>
           </div>
