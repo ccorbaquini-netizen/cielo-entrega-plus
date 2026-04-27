@@ -877,6 +877,7 @@ function AbaSorteios() {
     a.download = `bilhetes_${ciclo}_${new Date().toISOString().slice(0,10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
+  }
 
 // ── Aba Simulação ──────────────────────────────────────────────────────────
 function AbaSimulacao() {
