@@ -147,6 +147,40 @@ serve(async (req) => {
       }
     }
 
+    // 4b. Exclui bilhetes que já ganharam em sorteios anteriores do mesmo dia
+    // (Regra: bilhete premiado não concorre novamente no mesmo sábado)
+    const hoje = new Date().toISOString().slice(0, 10)
+    const { data: sorteiosHoje } = await supabase
+      .from('sorteios_resultados')
+      .select('ganhadores, tipo')
+      .eq('data_sorteio', hoje)
+      .eq('status', 'realizado')
+      .neq('tipo', tipo) // não exclui o próprio tipo (caso de rerun)
+
+    if (sorteiosHoje?.length) {
+      // Coleta todos os números de bilhetes que já ganharam hoje
+      const bilhetesJaGanharam = new Set<string>()
+      for (const s of sorteiosHoje) {
+        const ganhs = s.ganhadores as Array<{ bilhete: string }> || []
+        for (const g of ganhs) {
+          if (g.bilhete) bilhetesJaGanharam.add(g.bilhete)
+        }
+      }
+
+      if (bilhetesJaGanharam.size > 0) {
+        const antes = bilhetesElegiveis.length
+        bilhetesElegiveis = bilhetesElegiveis.filter(b => !bilhetesJaGanharam.has(b.numero))
+        const excluidos = antes - bilhetesElegiveis.length
+        console.log(`Sorteio ${tipo}: ${excluidos} bilhete(s) excluído(s) por já terem sido premiados hoje`)
+
+        if (!bilhetesElegiveis.length) {
+          return new Response(JSON.stringify({
+            erro: 'Todos os bilhetes elegíveis já foram premiados em sorteios anteriores de hoje.'
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } })
+        }
+      }
+    }
+
     // 5. Calcula ganhadores
     const numeros = bilhetesElegiveis.map(b => parseInt(b.numero, 10))
     let bilhetesGanhadores: number[] = []

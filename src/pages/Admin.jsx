@@ -519,6 +519,20 @@ function AbaSorteios() {
       {/* ── REALIZAR SORTEIO ── */}
       {subAba === 0 && (
         <div>
+          {/* Aviso de ordem quando há sobreposição */}
+          <div style={{
+            background: 'rgba(0,174,239,.08)', border: '1px solid rgba(0,174,239,.25)',
+            borderRadius: 'var(--r)', padding: '12px 14px', marginBottom: 14
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--blue)', marginBottom: 4 }}>
+              📋 Ordem de execução em dias com múltiplos sorteios
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.6 }}>
+              1º Mensal → 2º Trimestral → 3º Semestral → 4º Grande Prêmio<br/>
+              Bilhetes premiados em sorteios anteriores do mesmo dia são automaticamente excluídos dos seguintes.
+            </div>
+          </div>
+
           {/* Seletor de tipo */}
           <div className="card" style={{ marginBottom: 14 }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--lime)', marginBottom: 14 }}>
