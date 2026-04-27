@@ -6,7 +6,8 @@ import {
   buscarHistoricoScans,
   buscarBilhetes,
   converterTokensEmBilhetes,
-  atualizarFotoPerfil
+  atualizarFotoPerfil,
+  buscarProximosSorteios
 } from '../lib/supabase'
 import Logo from '../components/Logo'
 
@@ -77,11 +78,12 @@ function analisarBonusFrequencia(scans) {
 }
 
 // Prêmios
-const prizes = [
-  { cls: 'p-lime', period: 'Mensal',        desc: 'Vouchers combustível, recarga e manutenção',   count: '~62 ganh./mês' },
-  { cls: 'p-blue', period: 'Trimestral',    desc: 'Smartphone, capacete, kit manutenção e saúde', count: '5 ganhadores' },
-  { cls: 'p-teal', period: 'Semestral ★',   desc: 'Scooter elétrica, notebook, smartphone premium',count: '5 ganhadores' },
-  { cls: 'p-red',  period: 'Grande Prêmio', desc: 'Moto 0km ou PIX até R$ 30.000',                count: '1 ganhador' },
+// Prêmios base (descrição e ganhadores fixos, datas dinâmicas)
+const PRIZES_BASE = [
+  { id: 'mensal',       cls: 'p-lime', period: 'Mensal',        desc: 'Vouchers combustível, recarga e manutenção',    count: '1 a cada 2.000 bilhetes' },
+  { id: 'trimestral',   cls: 'p-blue', period: 'Trimestral',    desc: 'Smartphone, capacete, kit manutenção e saúde',  count: '5 ganhadores' },
+  { id: 'semestral',    cls: 'p-teal', period: 'Semestral ★',   desc: 'Scooter elétrica, notebook, smartphone premium', count: '5 ganhadores' },
+  { id: 'grande_premio',cls: 'p-red',  period: 'Grande Prêmio', desc: 'Moto 0km ou PIX até R$ 30.000',                 count: '1 ganhador' },
 ]
 
 // ── Componente Bônus Frequência ───────────────────────────────────────────────
@@ -174,7 +176,18 @@ function BonusFrequencia({ scans }) {
 }
 
 // ── Aba Resumo ────────────────────────────────────────────────────────────────
-function AbaResumo({ tokensDisp, bilhetes, scans, animTokens, animBilhetes, progPct, convertendo, msgConversao, hConverter }) {
+function AbaResumo({ tokensDisp, bilhetes, scans, animTokens, animBilhetes, progPct, convertendo, msgConversao, hConverter, proximosSorteios }) {
+
+  // Monta cards de prêmios com dados dinâmicos de sorteio
+  const prizes = PRIZES_BASE.map(p => {
+    const s = proximosSorteios?.[p.id]
+    return {
+      ...p,
+      data: s?.data || '—',
+      extracao: s?.extracao ? `Ext. ${s.extracao}` : '—',
+      diasRestantes: s?.diasRestantes,
+    }
+  })
   return (
     <>
       {/* Token hero */}
@@ -238,6 +251,22 @@ function AbaResumo({ tokensDisp, bilhetes, scans, animTokens, animBilhetes, prog
             <div className="prize-period">{p.period}</div>
             <div className="prize-desc">{p.desc}</div>
             <div className="prize-count">{p.count}</div>
+            {/* Data e extração do próximo sorteio */}
+            <div style={{
+              marginTop: 6, paddingTop: 6,
+              borderTop: '1px solid rgba(255,255,255,.1)',
+              display: 'flex', flexDirection: 'column', gap: 2
+            }}>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,.5)', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                Próximo sorteio
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,.85)' }}>
+                📅 {p.data}
+              </div>
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,.5)' }}>
+                {p.extracao}{p.diasRestantes != null ? ` · ${p.diasRestantes}d` : ''}
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -484,6 +513,7 @@ export default function Dashboard() {
   const [msgConversao, setMsgConversao] = useState('')
   const [abaAtiva,     setAbaAtiva]     = useState(0)
   const [atualizandoFoto, setAtualizandoFoto] = useState(false)
+  const [proximosSorteios, setProximosSorteios] = useState(null)
   const fotoRef = useRef()
 
   async function hAtualizarFoto(e) {
@@ -529,6 +559,8 @@ export default function Dashboard() {
       .finally(() => setLoading(false))
     carregarSaldo(cpf)
     buscarHistoricoScans(cpf, 50).then(s => setScans(s))
+    // Busca datas dos próximos sorteios
+    buscarProximosSorteios().then(d => { if (d?.sorteios) setProximosSorteios(d.sorteios) }).catch(() => {})
   }, [])
 
   if (loading) return (
@@ -625,6 +657,7 @@ export default function Dashboard() {
             animTokens={animTokens} animBilhetes={animBilhetes}
             progPct={progPct} convertendo={convertendo}
             msgConversao={msgConversao} hConverter={hConverter}
+            proximosSorteios={proximosSorteios}
           />
         )}
         {abaAtiva === 1 && entregador && <AbaBilhetes cpf={entregador.cpf} />}

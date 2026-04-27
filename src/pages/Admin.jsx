@@ -7,6 +7,9 @@ import {
   excluirScan, excluirTodosScansEntregador,
   buscarHistoricoScans, buscarRelatorioEntregas,
   buscarBilhetesPorCiclo, buscarElegiveis,
+  realizarSorteio, buscarResultadosSorteios,
+  buscarSorteiosConfig, atualizarSorteiosConfig,
+  buscarProximosSorteios,
   supabase
 } from '../lib/supabase'
 import Logo from '../components/Logo'
@@ -383,12 +386,424 @@ function AbaEntregadores() {
 
 // ── Aba Sorteios ───────────────────────────────────────────────────────────
 function AbaSorteios() {
-  const [subAba,     setSubAba]     = useState(0) // 0=bilhetes, 1=elegiveis
-  const [tipoSort,   setTipoSort]   = useState('mensal')
+  const [subAba,        setSubAba]        = useState(0) // 0=realizar, 1=bilhetes, 2=elegiveis, 3=historico
+  const [proximosSorteios, setProximosSorteios] = useState(null)
+  const [config,        setConfig]        = useState(null)
+  const [tipoSort,      setTipoSort]      = useState('mensal')
+  const [numExtracao,   setNumExtracao]   = useState('')
   const [bilhetesCiclo, setBilhetesCiclo] = useState(null)
-  const [elegiveis,  setElegiveis]  = useState(null)
-  const [loading,    setLoading]    = useState(false)
-  const [erro,       setErro]       = useState('')
+  const [elegiveis,     setElegiveis]     = useState(null)
+  const [historico,     setHistorico]     = useState(null)
+  const [resultado,     setResultado]     = useState(null)
+  const [loading,       setLoading]       = useState(false)
+  const [loadingConfig, setLoadingConfig] = useState(false)
+  const [erro,          setErro]          = useState('')
+
+  const TIPOS = [
+    { id: 'mensal',       label: 'Mensal',        ganhadores: '1 a cada 2.000 bilhetes', cor: 'var(--lime)' },
+    { id: 'trimestral',   label: 'Trimestral',    ganhadores: '5 ganhadores',             cor: 'var(--blue)' },
+    { id: 'semestral',    label: 'Semestral',     ganhadores: '5 ganhadores',             cor: 'var(--teal)' },
+    { id: 'grande_premio',label: 'Grande Prêmio', ganhadores: '1 ganhador',               cor: 'var(--lime)' },
+  ]
+
+  const SUB_ABAS = ['Realizar Sorteio', 'Bilhetes', 'Elegíveis', 'Histórico']
+
+  useEffect(() => {
+    buscarProximosSorteios().then(d => { if (d?.sorteios) setProximosSorteios(d.sorteios) }).catch(() => {})
+    buscarSorteiosConfig().then(c => setConfig(c))
+  }, [])
+
+  const sorteioAtual = proximosSorteios?.[tipoSort]
+
+  async function hRealizarSorteio() {
+    if (!sorteioAtual) { setErro('Não foi possível calcular o ciclo atual.'); return }
+    setLoading(true); setErro(''); setResultado(null)
+    try {
+      const res = await realizarSorteio({
+        tipo: tipoSort,
+        ciclo: sorteioAtual.ciclo,
+        numeroExtracao: numExtracao ? parseInt(numExtracao) : undefined
+      })
+      setResultado(res)
+    } catch (e) { setErro(e.message) }
+    setLoading(false)
+  }
+
+  async function hSalvarConfig() {
+    if (!config) return
+    setLoadingConfig(true)
+    try {
+      await atualizarSorteiosConfig({
+        proporcao_mensal: config.proporcao_mensal,
+        max_ganhadores_mensal: config.max_ganhadores_mensal,
+        min_ganhadores_mensal: config.min_ganhadores_mensal,
+      })
+    } catch {}
+    setLoadingConfig(false)
+  }
+
+  async function carregarBilhetes() {
+    setLoading(true); setErro('')
+    try { setBilhetesCiclo(await buscarBilhetesPorCiclo()) } catch (e) { setErro(e.message) }
+    setLoading(false)
+  }
+
+  async function carregarElegiveis() {
+    setLoading(true); setErro('')
+    try { setElegiveis(await buscarElegiveis(tipoSort)) } catch (e) { setErro(e.message) }
+    setLoading(false)
+  }
+
+  async function carregarHistorico() {
+    setLoading(true)
+    try { setHistorico(await buscarResultadosSorteios()) } catch {}
+    setLoading(false)
+  }
+
+  function fmtCPFlocal(c) {
+    return (c || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+  }
+
+  function exportarGanhadores(res) {
+    if (!res?.ganhadores?.length) return
+    const flat = res.ganhadores.map(g => ({
+      'Posição': g.posicao,
+      'Bilhete': `#${g.bilhete}`,
+      'Nome': g.nome,
+      'CPF': fmtCPFlocal(g.cpf),
+      'Cidade': g.cidade || '',
+      'UF': g.uf || '',
+      'Telefone': g.telefone || '',
+    }))
+    const cols = Object.keys(flat[0])
+    const rows = flat.map(r => cols.map(c => `"${String(r[c]).replace(/"/g,'""')}"`).join(';'))
+    const csv = [cols.join(';'), ...rows].join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ganhadores_${res.tipo}_${res.ciclo}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const cicloBonito = (ciclo) => {
+    const [ano, t] = (ciclo || '').split('-')
+    if (t?.startsWith('T')) return `Trimestre ${t.replace('T','')} · ${ano}`
+    if (t?.startsWith('M')) return `Mês ${t.replace('M','')} · ${ano}`
+    if (t?.startsWith('S')) return `Semestre ${t.replace('S','')} · ${ano}`
+    return ciclo || '—'
+  }
+
+  return (
+    <div>
+      {/* Sub-abas */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 18, overflowX: 'auto' }}>
+        {SUB_ABAS.map((a, i) => (
+          <button key={i} onClick={() => {
+            setSubAba(i); setErro(''); setResultado(null)
+            if (i === 1 && !bilhetesCiclo) carregarBilhetes()
+            if (i === 3 && !historico) carregarHistorico()
+          }} style={{
+            flex: 1, background: 'none', border: 'none', cursor: 'pointer',
+            padding: '10px 8px', flexShrink: 0,
+            fontSize: 11, fontWeight: 700, fontFamily: 'var(--fb)',
+            color: subAba === i ? 'var(--lime)' : 'var(--muted)',
+            borderBottom: subAba === i ? '2px solid var(--lime)' : '2px solid transparent',
+          }}>{a}</button>
+        ))}
+      </div>
+
+      {erro && <div className="alert alert-err" style={{ marginBottom: 14 }}><span>{erro}</span></div>}
+
+      {/* ── REALIZAR SORTEIO ── */}
+      {subAba === 0 && (
+        <div>
+          {/* Seletor de tipo */}
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--lime)', marginBottom: 14 }}>
+              Tipo de Sorteio
+            </div>
+            <div className="flex-col gap-3">
+              {TIPOS.map(t => {
+                const s = proximosSorteios?.[t.id]
+                return (
+                  <label key={t.id} onClick={() => { setTipoSort(t.id); setResultado(null); setErro('') }} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 12, cursor: 'pointer',
+                    padding: '12px 14px',
+                    background: tipoSort === t.id ? 'var(--lime-dim2)' : 'var(--card)',
+                    border: `1px solid ${tipoSort === t.id ? 'rgba(197,211,42,.35)' : 'var(--border)'}`,
+                    borderRadius: 'var(--r)', transition: 'all .15s'
+                  }}>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: '50%', flexShrink: 0, marginTop: 2,
+                      border: `2px solid ${tipoSort === t.id ? 'var(--lime)' : 'var(--border)'}`,
+                      background: tipoSort === t.id ? 'var(--lime)' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      {tipoSort === t.id && <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--navy)' }} />}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: tipoSort === t.id ? 'var(--lime)' : 'var(--off)' }}>{t.label}</span>
+                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{t.ganhadores}</span>
+                      </div>
+                      {s && (
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+                          📅 {s.data} · Ext. {s.extracao} · {s.diasRestantes}d restantes
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Número de extração opcional */}
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div style={{ fontFamily: 'var(--fd)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)', marginBottom: 12 }}>
+              Extração da Loteria Federal
+            </div>
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label className="label">
+                Número da extração
+                <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>(opcional — buscado automaticamente se vazio)</span>
+              </label>
+              <input className="input" type="number" placeholder={`Ex: ${proximosSorteios?.[tipoSort]?.extracao || '6080'}`}
+                value={numExtracao} onChange={e => setNumExtracao(e.target.value)} />
+              {sorteioAtual && (
+                <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                  Estimativa para {sorteioAtual.data}: extração {sorteioAtual.extracao}
+                </span>
+              )}
+            </div>
+            <button className="btn btn-lime" onClick={hRealizarSorteio} disabled={loading}>
+              {loading
+                ? <><div className="spinner" style={{ color: 'var(--navy)' }} /> Buscando resultado e calculando...</>
+                : `🎰 Realizar Sorteio ${TIPOS.find(t => t.id === tipoSort)?.label}`
+              }
+            </button>
+          </div>
+
+          {/* Config proporção mensal */}
+          {tipoSort === 'mensal' && config && (
+            <div className="card" style={{ marginBottom: 14 }}>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--blue)', marginBottom: 12 }}>
+                Configuração Sorteio Mensal
+              </div>
+              <div className="flex-col gap-3">
+                <div className="field">
+                  <label className="label">1 ganhador a cada X bilhetes</label>
+                  <input className="input" type="number" min="100" max="10000"
+                    value={config.proporcao_mensal}
+                    onChange={e => setConfig(c => ({ ...c, proporcao_mensal: parseInt(e.target.value) || 2000 }))} />
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label className="label">Mínimo de ganhadores</label>
+                    <input className="input" type="number" min="1" max="10"
+                      value={config.min_ganhadores_mensal}
+                      onChange={e => setConfig(c => ({ ...c, min_ganhadores_mensal: parseInt(e.target.value) || 1 }))} />
+                  </div>
+                  <div className="field" style={{ flex: 1 }}>
+                    <label className="label">Máximo de ganhadores</label>
+                    <input className="input" type="number" min="1" max="500"
+                      value={config.max_ganhadores_mensal}
+                      onChange={e => setConfig(c => ({ ...c, max_ganhadores_mensal: parseInt(e.target.value) || 100 }))} />
+                  </div>
+                </div>
+                <button className="btn btn-outline" onClick={hSalvarConfig} disabled={loadingConfig}>
+                  {loadingConfig ? 'Salvando...' : 'Salvar configuração'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Resultado do sorteio */}
+          {resultado && (
+            <div style={{
+              background: 'var(--lime-dim2)', border: '1px solid rgba(197,211,42,.3)',
+              borderRadius: 'var(--r2)', padding: '20px', marginTop: 4
+            }}>
+              <div style={{ fontFamily: 'var(--fd)', fontSize: 15, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--lime)', marginBottom: 14 }}>
+                🎉 Sorteio realizado!
+              </div>
+
+              {/* Números da extração */}
+              <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+                {[
+                  { l: 'Extração CEF', v: resultado.extracaoCEF },
+                  { l: '1º Prêmio', v: resultado.primeiro },
+                  { l: '2º Prêmio', v: resultado.segundo },
+                  { l: 'Número vencedor', v: `#${resultado.numeroVencedor}` },
+                ].map((r, i) => (
+                  <div key={i} style={{
+                    flex: 1, minWidth: 80, textAlign: 'center',
+                    background: 'var(--navy-2)', borderRadius: 'var(--r)', padding: '10px 8px',
+                    border: i === 3 ? '1px solid rgba(197,211,42,.4)' : '1px solid var(--border)'
+                  }}>
+                    <div style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>{r.l}</div>
+                    <div style={{ fontFamily: 'var(--fd)', fontSize: i === 3 ? 18 : 16, fontWeight: 900, color: i === 3 ? 'var(--lime)' : 'var(--white)' }}>{r.v}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Ganhadores */}
+              <div style={{ fontFamily: 'var(--fd)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)', marginBottom: 10 }}>
+                {resultado.ganhadores?.length} ganhador{resultado.ganhadores?.length !== 1 ? 'es' : ''} · {resultado.totalBilhetes} bilhetes no pool
+              </div>
+
+              <div className="card" style={{ marginBottom: 12 }}>
+                {resultado.ganhadores?.map((g, i) => (
+                  <div key={i} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '10px 0', borderBottom: i < resultado.ganhadores.length - 1 ? '1px solid var(--border)' : 'none'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 26, height: 26, borderRadius: '50%',
+                        background: i === 0 ? 'var(--lime-dim2)' : 'var(--card)',
+                        border: `1px solid ${i === 0 ? 'var(--lime)' : 'var(--border)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontFamily: 'var(--fd)', fontSize: 12, fontWeight: 800,
+                        color: i === 0 ? 'var(--lime)' : 'var(--muted)'
+                      }}>{g.posicao}</div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--off)' }}>{g.nome}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtCPFlocal(g.cpf)}{g.cidade ? ` · ${g.cidade}/${g.uf}` : ''}</div>
+                      </div>
+                    </div>
+                    <div style={{ fontFamily: 'var(--fd)', fontSize: 16, fontWeight: 900, color: 'var(--blue)' }}>#{g.bilhete}</div>
+                  </div>
+                ))}
+              </div>
+
+              <button className="btn btn-outline" onClick={() => exportarGanhadores(resultado)}>
+                ⬇ Exportar ganhadores CSV
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── BILHETES ── */}
+      {subAba === 1 && (
+        <div>
+          <button className="btn btn-lime" onClick={carregarBilhetes} disabled={loading} style={{ marginBottom: 16 }}>
+            {loading ? <><div className="spinner" style={{ color: 'var(--navy)' }} /> Carregando...</> : '🎟 Atualizar bilhetes'}
+          </button>
+          {bilhetesCiclo && Object.entries(bilhetesCiclo).map(([ciclo, lista]) => (
+            <div key={ciclo} className="card" style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--fd)', fontSize: 15, fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                    {cicloBonito(ciclo)}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                    {lista.length} bilhete{lista.length !== 1 ? 's' : ''} · {new Set(lista.map(b => b.cpf_entregador)).size} entregador{new Set(lista.map(b => b.cpf_entregador)).size !== 1 ? 'es' : ''}
+                  </div>
+                </div>
+                <span style={{ fontFamily: 'var(--fd)', fontSize: 24, fontWeight: 900, color: 'var(--blue)' }}>{lista.length}</span>
+              </div>
+              {lista.slice(0, 10).map((b, i) => (
+                <div key={b.id} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '7px 0', borderBottom: i < Math.min(lista.length, 10) - 1 ? '1px solid var(--border)' : 'none'
+                }}>
+                  <div>
+                    <span style={{ fontFamily: 'var(--fd)', fontSize: 15, fontWeight: 900, color: 'var(--white)', marginRight: 10 }}>#{b.numero}</span>
+                    <span style={{ fontSize: 12, color: 'var(--off)' }}>{b.entregadores?.nome}</span>
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>{new Date(b.created_at).toLocaleDateString('pt-BR')}</span>
+                </div>
+              ))}
+              {lista.length > 10 && (
+                <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--muted)', paddingTop: 8 }}>
+                  +{lista.length - 10} bilhetes — use o CSV para ver todos
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── ELEGÍVEIS ── */}
+      {subAba === 2 && (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+            {TIPOS.map(t => (
+              <button key={t.id} onClick={() => { setTipoSort(t.id); setElegiveis(null) }} style={{
+                padding: '6px 12px', borderRadius: 100, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                background: tipoSort === t.id ? 'var(--lime-dim2)' : 'var(--card)',
+                border: `1px solid ${tipoSort === t.id ? 'rgba(197,211,42,.4)' : 'var(--border)'}`,
+                color: tipoSort === t.id ? 'var(--lime)' : 'var(--muted)'
+              }}>{t.label}</button>
+            ))}
+          </div>
+          <button className="btn btn-lime" onClick={carregarElegiveis} disabled={loading} style={{ marginBottom: 14 }}>
+            {loading ? <><div className="spinner" style={{ color: 'var(--navy)' }} /> Carregando...</> : 'Buscar elegíveis'}
+          </button>
+          {elegiveis && (
+            <>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
+                <strong style={{ color: 'var(--lime)', fontSize: 20, fontFamily: 'var(--fd)', fontWeight: 900 }}>{elegiveis.length}</strong>
+                {' '}elegível{elegiveis.length !== 1 ? 'is' : ''}
+              </div>
+              <div className="card">
+                {elegiveis.map((e, i) => (
+                  <div key={e.cpf} style={{ padding: '12px 0', borderBottom: i < elegiveis.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--off)', marginBottom: 2 }}>{i + 1}. {e.nome}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{fmtCPFlocal(e.cpf)}{e.cidade ? ` · ${e.cidade}/${e.uf}` : ''}</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+                          {e.bilhetes.slice(0, 5).map(n => (
+                            <span key={n} style={{ fontFamily: 'var(--fd)', fontSize: 10, fontWeight: 700, color: 'var(--blue)', background: 'var(--blue-dim)', border: '1px solid rgba(0,174,239,.2)', padding: '2px 7px', borderRadius: 100 }}>#{n}</span>
+                          ))}
+                          {e.bilhetes.length > 5 && <span style={{ fontSize: 10, color: 'var(--muted)' }}>+{e.bilhetes.length - 5}</span>}
+                        </div>
+                      </div>
+                      <div style={{ fontFamily: 'var(--fd)', fontSize: 26, fontWeight: 900, color: 'var(--blue)', flexShrink: 0, marginLeft: 10 }}>{e.bilhetes.length}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── HISTÓRICO ── */}
+      {subAba === 3 && (
+        <div>
+          {loading && <div style={{ textAlign: 'center', padding: 30 }}><div className="spinner" style={{ width: 28, height: 28, borderWidth: 3, color: 'var(--lime)', margin: '0 auto' }} /></div>}
+          {historico?.length === 0 && <div style={{ textAlign: 'center', padding: 30, color: 'var(--muted)', fontSize: 13 }}>Nenhum sorteio realizado ainda</div>}
+          {historico?.map((s, i) => (
+            <div key={s.id} className="card" style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--fd)', fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', color: 'var(--lime)' }}>
+                    {s.tipo?.replace('_', ' ')} · {cicloBonito(s.ciclo)}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                    {new Date(s.data_sorteio).toLocaleDateString('pt-BR')} · Ext. {s.numero_extracao} · {s.total_ganhadores} ganhador{s.total_ganhadores !== 1 ? 'es' : ''} · {s.total_bilhetes} bilhetes
+                  </div>
+                </div>
+                <button className="btn btn-outline" style={{ width: 'auto', padding: '6px 12px', fontSize: 11 }}
+                  onClick={() => exportarGanhadores({ ...s, ganhadores: s.ganhadores })}>⬇</button>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Número vencedor: <strong style={{ color: 'var(--white)', fontFamily: 'var(--fd)' }}>#{s.numero_vencedor}</strong>
+                {' '}(1º: {s.resultado_1premio} · 2º: {s.resultado_2premio})
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
   const TIPOS = [
     { id: 'mensal',       label: 'Mensal',        desc: 'Todos com bilhetes no trimestre atual',          cor: 'var(--blue)' },

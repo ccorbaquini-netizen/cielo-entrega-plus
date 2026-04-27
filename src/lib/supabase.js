@@ -470,3 +470,50 @@ export async function atualizarFotoPerfil(cpf, arquivo) {
   if (errUpdate) throw new Error(errUpdate.message)
   return url
 }
+
+// ─── SORTEIOS ─────────────────────────────────────────────────────────────────
+
+export async function buscarProximosSorteios() {
+  const { data, error } = await supabase.functions.invoke('proximo-sorteio')
+  if (error) throw new Error(error.message)
+  return data
+}
+
+export async function realizarSorteio({ tipo, ciclo, numeroExtracao }) {
+  const { data, error } = await supabase.functions.invoke('realizar-sorteio', {
+    body: { tipo, ciclo, numeroExtracao }
+  })
+  if (error) throw new Error(error.message)
+  if (data?.erro) throw new Error(data.erro)
+  return data
+}
+
+export async function buscarResultadosSorteios() {
+  const { data, error } = await supabase
+    .from('sorteios_resultados')
+    .select('*')
+    .order('data_sorteio', { ascending: false })
+    .limit(20)
+  if (error) throw new Error(error.message)
+  return data || []
+}
+
+export async function buscarSorteiosConfig() {
+  const { data, error } = await supabase
+    .from('sorteios_config')
+    .select('*')
+    .single()
+  if (error) return null
+  return data
+}
+
+export async function atualizarSorteiosConfig(config) {
+  const { data, error } = await supabase
+    .from('sorteios_config')
+    .update(config)
+    .neq('id', '00000000-0000-0000-0000-000000000000')
+    .select()
+    .single()
+  if (error) throw new Error(error.message)
+  return data
+}
