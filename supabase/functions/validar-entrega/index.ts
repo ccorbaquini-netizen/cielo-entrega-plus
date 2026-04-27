@@ -1,5 +1,5 @@
 // supabase/functions/validar-entrega/index.ts
-// Módulo 2 — Fluxo pendente: scan aceito apenas em OUT_FOR_DELIVERY/IN_TRANSIT
+// Módulo 2 — Fluxo pendente: scan aceito apenas em TO_BE_DELIVERED
 // Tokens creditados após confirmação do status final na Intelipost
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
@@ -12,8 +12,8 @@ const corsHeaders = {
 
 // ── Status que aceitam o scan (pacote na rota, custódia transferida) ────────
 const STATUS_ACEITOS = [
-  'OUT_FOR_DELIVERY',
-  'IN_TRANSIT',
+  
+  'TO_BE_DELIVERED',
   'SAIU_PARA_ENTREGA',
   'EM_ROTA',
   'EM_TRANSITO',
@@ -29,9 +29,12 @@ const MSG_STATUS: Record<string, string> = {
   NEW:                  'Pedido recém criado — ainda não saiu para entrega.',
   READY_FOR_SHIPMENT:   'Pedido pronto para envio — aguardando retirada.',
   HANDLING:             'Em manuseio no armazém — ainda não transferido.',
-  SHIPPED:              'Pedido despachado, aguardando transferência para rota.',
-  DELIVERED:            'Este pedido já foi entregue e os tokens já foram processados.',
-  DELIVERY_FAILED:      'Este pedido já teve falha registrada e os tokens já foram processados.',
+  SHIPPED:              'Pedido despachado — aguardando transferência para a rota de entrega.',
+  IN_TRANSIT:           'Pedido em trânsito — aguarde o status "Saiu para entrega" (TO_BE_DELIVERED).',
+  OUT_FOR_DELIVERY:     'Pedido em rota — escaneie quando o status for TO_BE_DELIVERED.',
+  DELIVERED:            'Este pedido já foi entregue. Os tokens já foram processados.',
+  DELIVERY_FAILED:      'Este pedido já teve falha registrada. Os tokens já foram processados.',
+  DELIVERY_REFUSED:     'Entrega recusada pelo destinatário. Os tokens já foram processados.',
   CANCELLED:            'Pedido cancelado — não gera tokens.',
   LOST:                 'Pedido marcado como perdido — não gera tokens.',
   STOLEN:               'Pedido marcado como roubado — não gera tokens.',
@@ -189,8 +192,8 @@ serve(async (req) => {
     let inteliData: { status: string, endereco: string | null }
 
     if (modoSim || !apiKey) {
-      // Modo simulação: simula OUT_FOR_DELIVERY para aceitar o scan
-      inteliData = { status: 'OUT_FOR_DELIVERY', endereco: 'Rua Exemplo, 100, São Paulo, SP, Brasil' }
+      // Modo simulação: simula TO_BE_DELIVERED para aceitar o scan
+      inteliData = { status: 'TO_BE_DELIVERED', endereco: 'Rua Exemplo, 100, São Paulo, SP, Brasil' }
     } else {
       inteliData = await consultarIntelipost(numeroPedido, apiKey, baseUrl)
     }
