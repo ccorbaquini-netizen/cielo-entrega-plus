@@ -12,7 +12,7 @@ import {
 import Logo from '../components/Logo'
 
 const PASS = import.meta.env.VITE_ADMIN_PASSWORD || 'cielo2025'
-const ABAS = ['Entregadores', 'Feature Flags', 'Sorteios', 'Relatórios', 'Intelipost', 'WhatsApp']
+const ABAS = ['Entregadores', 'Feature Flags', 'Sorteios', 'Relatórios', 'Simulação', 'Intelipost', 'WhatsApp']
 
 const FLAG_LABELS = {
   whatsapp_ios:         { label: 'WhatsApp — iOS',         desc: 'Disparo para usuários iOS sem push' },
@@ -611,6 +611,143 @@ function AbaSorteios() {
   )
 }
 
+// ── Aba Simulação ──────────────────────────────────────────────────────────
+function AbaSimulacao() {
+  const [numeroPedido, setNumeroPedido] = useState('')
+  const [novoStatus,   setNovoStatus]   = useState('DELIVERED')
+  const [loading,      setLoading]      = useState(false)
+  const [resultado,    setResultado]    = useState(null)
+  const [erro,         setErro]         = useState('')
+
+  const STATUS_OPCOES = [
+    { v: 'DELIVERED',        l: 'DELIVERED — Entregue com sucesso',          cor: 'var(--teal)' },
+    { v: 'DELIVERY_FAILED',  l: 'DELIVERY_FAILED — Falha na entrega',        cor: 'var(--red)' },
+    { v: 'DELIVERY_REFUSED', l: 'DELIVERY_REFUSED — Recusado pelo destinatário', cor: 'var(--red)' },
+    { v: 'CANCELLED',        l: 'CANCELLED — Pedido cancelado',              cor: 'var(--muted)' },
+  ]
+
+  async function simular() {
+    if (!numeroPedido.trim()) { setErro('Digite o número do pedido.'); return }
+    setLoading(true); setErro(''); setResultado(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('simular-status', {
+        body: { numeroPedido: numeroPedido.trim(), novoStatus }
+      })
+      if (error) throw new Error(error.message)
+      if (data?.erro) throw new Error(data.erro)
+      setResultado(data)
+    } catch (e) {
+      setErro(e.message || 'Erro ao simular status.')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div>
+      {/* Aviso */}
+      <div style={{
+        background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.35)',
+        borderRadius: 'var(--r)', padding: '12px 14px', marginBottom: 18
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24', marginBottom: 4 }}>
+          ⚠️ Ambiente de Homologação
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.55 }}>
+          Esta ferramenta simula a mudança de status da Intelipost para testar o fluxo completo de tokens. Use apenas para testes — não utilizar em produção com pedidos reais.
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{ fontFamily: 'var(--fd)', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--lime)', marginBottom: 14 }}>
+          Simular Mudança de Status
+        </div>
+
+        <div className="flex-col gap-3">
+          {/* Número do pedido */}
+          <div className="field">
+            <label className="label">Número do Pedido</label>
+            <input className="input" type="text"
+              placeholder="Digite o mesmo número usado no scanner"
+              value={numeroPedido}
+              onChange={e => { setNumeroPedido(e.target.value); setErro(''); setResultado(null) }}
+              onKeyDown={e => e.key === 'Enter' && simular()} />
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              O pedido precisa ter sido escaneado e estar com status "Aguardando confirmação"
+            </span>
+          </div>
+
+          {/* Novo status */}
+          <div className="field">
+            <label className="label">Novo Status (simulando Intelipost)</label>
+            {STATUS_OPCOES.map(s => (
+              <label key={s.v} onClick={() => setNovoStatus(s.v)} style={{
+                display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+                padding: '10px 12px', marginBottom: 6,
+                background: novoStatus === s.v ? 'var(--lime-dim2)' : 'var(--card)',
+                border: `1px solid ${novoStatus === s.v ? 'rgba(197,211,42,.35)' : 'var(--border)'}`,
+                borderRadius: 'var(--r)', transition: 'all .15s'
+              }}>
+                <div style={{
+                  width: 16, height: 16, borderRadius: '50%', flexShrink: 0,
+                  border: `2px solid ${novoStatus === s.v ? 'var(--lime)' : 'var(--border)'}`,
+                  background: novoStatus === s.v ? 'var(--lime)' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  {novoStatus === s.v && <div style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--navy)' }} />}
+                </div>
+                <span style={{ fontSize: 12, color: novoStatus === s.v ? 'var(--lime)' : 'var(--off)' }}>{s.l}</span>
+              </label>
+            ))}
+          </div>
+
+          {erro && <div className="alert alert-err"><span>{erro}</span></div>}
+
+          <button className="btn btn-lime" onClick={simular} disabled={loading || !numeroPedido.trim()}>
+            {loading
+              ? <><div className="spinner" style={{ color: 'var(--navy)' }} /> Simulando...</>
+              : '▶ Simular mudança de status'
+            }
+          </button>
+        </div>
+      </div>
+
+      {/* Resultado */}
+      {resultado && (
+        <div style={{
+          marginTop: 16,
+          background: resultado.tokens > 0
+            ? 'rgba(0,201,167,.08)' : 'rgba(255,61,87,.08)',
+          border: `1px solid ${resultado.tokens > 0 ? 'rgba(0,201,167,.3)' : 'rgba(255,61,87,.3)'}`,
+          borderRadius: 'var(--r2)', padding: '20px'
+        }}>
+          <div style={{ fontFamily: 'var(--fd)', fontSize: 14, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em', color: resultado.tokens > 0 ? 'var(--teal)' : 'var(--red)', marginBottom: 14 }}>
+            {resultado.tokens > 0 ? '✅ Tokens creditados!' : '❌ Sem tokens'}
+          </div>
+          {[
+            { k: 'Pedido',          v: resultado.numeroPedido },
+            { k: 'Status simulado', v: resultado.statusSimulado },
+            { k: 'Situação',        v: resultado.situacao?.replace(/_/g, ' ') },
+            { k: 'Tokens',          v: `${resultado.tokens} token(s)` },
+            { k: 'GPS',             v: resultado.geoMsg },
+          ].map((r, i) => (
+            <div key={i} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+              padding: '7px 0',
+              borderBottom: i < 4 ? '1px solid var(--border)' : 'none'
+            }}>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>{r.k}</span>
+              <span style={{ fontSize: 12, color: 'var(--off)', fontWeight: 600, textAlign: 'right', maxWidth: '60%' }}>{r.v}</span>
+            </div>
+          ))}
+          <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 12, lineHeight: 1.5 }}>
+            Verifique no painel do entregador se os tokens foram atualizados. O histórico de entregas também deve refletir a mudança.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Aba Relatórios ─────────────────────────────────────────────────────────
 function AbaRelatorios() {
   const [dataInicio,  setDataInicio]  = useState('')
@@ -892,8 +1029,11 @@ export default function Admin() {
         {/* ── ABA 3: Relatórios ── */}
         {aba === 3 && <AbaRelatorios />}
 
-        {/* ── ABA 4: Intelipost ── */}
-        {aba === 4 && ipConfig && (
+        {/* ── ABA 4: Simulação ── */}
+        {aba === 4 && <AbaSimulacao />}
+
+        {/* ── ABA 5: Intelipost ── */}
+        {aba === 5 && ipConfig && (
           <div className="card">
             <SectionTitle>Intelipost API</SectionTitle>
             <p className="text-muted" style={{ fontSize: 12, marginBottom: 14 }}>Configure antes de habilitar o scan de entregas.</p>
@@ -932,8 +1072,8 @@ export default function Admin() {
           </div>
         )}
 
-        {/* ── ABA 5: WhatsApp ── */}
-        {aba === 5 && wpConfig && (
+        {/* ── ABA 6: WhatsApp ── */}
+        {aba === 6 && wpConfig && (
           <div className="card">
             <SectionTitle>WhatsApp</SectionTitle>
             <p className="text-muted" style={{ fontSize: 12, marginBottom: 14 }}>Configure antes de habilitar os flags de WhatsApp.</p>
