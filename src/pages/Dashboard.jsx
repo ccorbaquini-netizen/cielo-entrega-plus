@@ -293,10 +293,15 @@ function AbaBilhetes({ cpf }) {
     return acc
   }, {})
 
+  const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
   const cicloBonito = (ciclo) => {
-    // Ex: "2025-T2" → "Trimestre 2 · 2025"
     const [ano, t] = ciclo.split('-')
-    return `Trimestre ${t?.replace('T','')} · ${ano}`
+    if (t?.startsWith('M')) {
+      const mesIdx = parseInt(t.replace('M','')) - 1
+      return `${MESES[mesIdx] || t} · ${ano}`
+    }
+    if (t?.startsWith('T')) return `Trimestre ${t.replace('T','')} · ${ano}`
+    return ciclo
   }
 
   if (loading) return <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted)' }}><div className="spinner" style={{ width: 28, height: 28, borderWidth: 3, color: 'var(--lime)', margin: '0 auto' }} /></div>

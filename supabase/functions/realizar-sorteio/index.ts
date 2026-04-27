@@ -147,14 +147,26 @@ serve(async (req) => {
         entregadores!inner(nome, cpf, cidade, uf, telefone)
       `)
 
-    if (tipo === 'mensal' || tipo === 'trimestral') {
+    if (tipo === 'mensal') {
+      // Ciclo mensal exato: ex "2026-M04"
       queryBilhetes = queryBilhetes.eq('ciclo', ciclo)
+    } else if (tipo === 'trimestral') {
+      // Busca os 3 meses do trimestre: ex "2026-T2" → M04, M05, M06
+      const [ano, t] = ciclo.split('-T')
+      const trim = parseInt(t)
+      const mesInicio = (trim - 1) * 3 + 1
+      const ciclosMensais = [1, 2, 3].map(i =>
+        `${ano}-M${String(mesInicio + i - 1).padStart(2, '0')}`
+      )
+      queryBilhetes = queryBilhetes.in('ciclo', ciclosMensais)
     } else if (tipo === 'semestral' || tipo === 'grande_premio') {
-      // Semestral: últimos 2 ciclos trimestrais
+      // Semestral: 6 meses do semestre (ciclos mensais)
       const [ano, sem] = ciclo.split('-S')
-      const trimAtual = sem === '1' ? ['T1', 'T2'] : ['T3', 'T4']
-      const ciclos = trimAtual.map(t => `${ano}-${t}`)
-      queryBilhetes = queryBilhetes.in('ciclo', ciclos)
+      const mesInicio = sem === '1' ? 1 : 7
+      const ciclosMensais = [1, 2, 3, 4, 5, 6].map(i =>
+        `${ano}-M${String(mesInicio + i - 1).padStart(2, '0')}`
+      )
+      queryBilhetes = queryBilhetes.in('ciclo', ciclosMensais)
     }
 
     const { data: bilhetesData } = await queryBilhetes

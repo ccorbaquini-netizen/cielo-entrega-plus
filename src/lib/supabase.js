@@ -321,9 +321,8 @@ export async function converterTokensEmBilhetes(cpf) {
 function gerarCicloAtual() {
   const now = new Date()
   const ano = now.getFullYear()
-  const mes = now.getMonth() + 1
-  const trim = Math.ceil(mes / 3)
-  return `${ano}-T${trim}`
+  const mes = String(now.getMonth() + 1).padStart(2, '0')
+  return `${ano}-M${mes}`
 }
 
 // ─── SORTEIOS ─────────────────────────────────────────────────────────────────
@@ -380,16 +379,14 @@ export async function buscarElegiveis(tipo) {
   const trim = Math.ceil(mes / 3)
 
   if (tipo === 'mensal') {
-    filtroCiclo = `${ano}-T${trim}` // bilhetes do trimestre atual (inclui mês)
+    filtroCiclo = `${ano}-M${String(mes).padStart(2, '0')}`
   } else if (tipo === 'trimestral') {
-    filtroCiclo = `${ano}-T${trim}`
+    // 3 meses do trimestre atual
+    const mesInicio = (trim - 1) * 3 + 1
+    filtroCiclo = [1, 2, 3].map(i => `${ano}-M${String(mesInicio + i - 1).padStart(2, '0')}`)
   } else if (tipo === 'semestral' || tipo === 'grande_premio') {
-    // Bilhetes do semestre atual (2 trimestres)
-    const trimAnterior = trim === 1
-      ? { ano: ano - 1, trim: 4 }
-      : { ano, trim: trim - 1 }
-    filtroCiclo = [`${ano}-T${trim}`, `${trimAnterior.ano}-T${trimAnterior.trim}`]
-    // Ativo nos últimos 2 meses
+    const mesInicio = sem === 1 ? 1 : 7
+    filtroCiclo = [1, 2, 3, 4, 5, 6].map(i => `${ano}-M${String(mesInicio + i - 1).padStart(2, '0')}`)
     filtroAtivo = periodoAtivo(2)
   }
 
