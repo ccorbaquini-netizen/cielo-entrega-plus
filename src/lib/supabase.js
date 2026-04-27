@@ -479,9 +479,9 @@ export async function buscarProximosSorteios() {
   return data
 }
 
-export async function realizarSorteio({ tipo, ciclo, numeroExtracao }) {
+export async function realizarSorteio({ tipo, ciclo, numeroExtracao, primeiroPremio, segundoPremio }) {
   const { data, error } = await supabase.functions.invoke('realizar-sorteio', {
-    body: { tipo, ciclo, numeroExtracao }
+    body: { tipo, ciclo, numeroExtracao, primeiroPremio, segundoPremio }
   })
   if (error) throw new Error(error.message)
   if (data?.erro) throw new Error(data.erro)

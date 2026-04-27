@@ -11,23 +11,51 @@ const corsHeaders = {
 
 // ── Busca resultado da Loteria Federal ───────────────────────────────────────
 async function buscarResultadoFederal(numeroExtracao?: number) {
-  const url = numeroExtracao
-    ? `https://servicebus2.caixa.gov.br/portaldeloterias/api/federal/${numeroExtracao}`
-    : `https://servicebus2.caixa.gov.br/portaldeloterias/api/federal/latest`
+  const urls = numeroExtracao
+    ? [
+        `https://servicebus2.caixa.gov.br/portaldeloterias/api/federal/${numeroExtracao}`,
+        `https://loteriascaixa-api.herokuapp.com/api/federal/${numeroExtracao}`,
+        `https://api.guidi.dev.br/loteria/federal/${numeroExtracao}`,
+      ]
+    : [
+        `https://servicebus2.caixa.gov.br/portaldeloterias/api/federal/latest`,
+        `https://loteriascaixa-api.herokuapp.com/api/federal/latest`,
+        `https://api.guidi.dev.br/loteria/federal/ultimo`,
+      ]
 
-  const r = await fetch(url, { headers: { 'Accept': 'application/json' } })
-  if (!r.ok) throw new Error(`Erro ao buscar resultado da Loteria Federal: ${r.status}`)
+  let lastError = ''
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, {
+        headers: { 'Accept': 'application/json', 'User-Agent': 'CieloEntregaPlus/1.0' },
+        signal: AbortSignal.timeout(8000)
+      })
+      if (!r.ok) { lastError = `HTTP ${r.status} em ${url}`; continue }
 
-  const data = await r.json()
-  const dezenas = data.dezenasSorteadasOrdemSorteio || data.listaDezenas || []
-  if (dezenas.length < 2) throw new Error('Resultado inválido — menos de 2 prêmios disponíveis')
+      const data = await r.json()
 
-  return {
-    numero:   data.numero || data.concurso,
-    data:     data.dataApuracao || data.data,
-    primeiro: String(dezenas[0]).replace(/\D/g, ''),
-    segundo:  String(dezenas[1]).replace(/\D/g, ''),
+      // Normaliza diferentes formatos de resposta
+      const dezenas =
+        data.dezenasSorteadasOrdemSorteio ||
+        data.listaDezenas ||
+        data.dezenas ||
+        []
+
+      if (dezenas.length < 2) { lastError = `Resultado inválido em ${url}`; continue }
+
+      return {
+        numero:   data.numero || data.concurso || numeroExtracao || 0,
+        data:     data.dataApuracao || data.data || new Date().toLocaleDateString('pt-BR'),
+        primeiro: String(dezenas[0]).replace(/\D/g, ''),
+        segundo:  String(dezenas[1]).replace(/\D/g, ''),
+      }
+    } catch (e) {
+      lastError = `${e.message} em ${url}`
+      continue
+    }
   }
+
+  throw new Error(`Não foi possível buscar o resultado da Loteria Federal. ${lastError}. Use a opção de inserir os números manualmente.`)
 }
 
 // ── Calcula número vencedor ───────────────────────────────────────────────────
@@ -77,7 +105,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
   try {
-    const { tipo, ciclo, numeroExtracao } = await req.json()
+    const { tipo, ciclo, numeroExtracao, primeiroPremio, segundoPremio } = await req.json()
 
     if (!tipo || !ciclo) {
       return new Response(JSON.stringify({ erro: "tipo e ciclo são obrigatórios" }),
@@ -95,8 +123,19 @@ serve(async (req) => {
       .select('*')
       .single()
 
-    // 2. Busca resultado da Loteria Federal
-    const resultado = await buscarResultadoFederal(numeroExtracao)
+    // 2. Busca resultado da Loteria Federal (ou usa números inseridos manualmente)
+    let resultado
+    if (primeiroPremio && segundoPremio) {
+      // Números inseridos manualmente pelo admin
+      resultado = {
+        numero:   numeroExtracao || 0,
+        data:     new Date().toLocaleDateString('pt-BR'),
+        primeiro: String(primeiroPremio).replace(/\D/g, ''),
+        segundo:  String(segundoPremio).replace(/\D/g, ''),
+      }
+    } else {
+      resultado = await buscarResultadoFederal(numeroExtracao)
+    }
     const numeroVencedor = calcularNumeroVencedor(resultado.primeiro, resultado.segundo)
     const numVencedorInt = parseInt(numeroVencedor, 10)
 

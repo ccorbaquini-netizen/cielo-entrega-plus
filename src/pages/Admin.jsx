@@ -391,6 +391,8 @@ function AbaSorteios() {
   const [config,        setConfig]        = useState(null)
   const [tipoSort,      setTipoSort]      = useState('mensal')
   const [numExtracao,   setNumExtracao]   = useState('')
+  const [primeiroPremio, setPrimeiroPremio] = useState('')
+  const [segundoPremio,  setSegundoPremio]  = useState('')
   const [bilhetesCiclo, setBilhetesCiclo] = useState(null)
   const [elegiveis,     setElegiveis]     = useState(null)
   const [historico,     setHistorico]     = useState(null)
@@ -422,7 +424,9 @@ function AbaSorteios() {
       const res = await realizarSorteio({
         tipo: tipoSort,
         ciclo: sorteioAtual.ciclo,
-        numeroExtracao: numExtracao ? parseInt(numExtracao) : undefined
+        numeroExtracao: numExtracao ? parseInt(numExtracao) : undefined,
+        primeiroPremio: primeiroPremio || undefined,
+        segundoPremio:  segundoPremio  || undefined,
       })
       setResultado(res)
     } catch (e) { setErro(e.message) }
@@ -574,27 +578,62 @@ function AbaSorteios() {
             </div>
           </div>
 
-          {/* Número de extração opcional */}
+          {/* Número de extração + prêmios manuais */}
           <div className="card" style={{ marginBottom: 14 }}>
             <div style={{ fontFamily: 'var(--fd)', fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)', marginBottom: 12 }}>
-              Extração da Loteria Federal
+              Resultado da Loteria Federal
             </div>
-            <div className="field" style={{ marginBottom: 12 }}>
-              <label className="label">
-                Número da extração
-                <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--muted)', marginLeft: 6 }}>(opcional — buscado automaticamente se vazio)</span>
-              </label>
-              <input className="input" type="number" placeholder={`Ex: ${proximosSorteios?.[tipoSort]?.extracao || '6080'}`}
-                value={numExtracao} onChange={e => setNumExtracao(e.target.value)} />
-              {sorteioAtual && (
-                <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
-                  Estimativa para {sorteioAtual.data}: extração {sorteioAtual.extracao}
-                </span>
+
+            <div style={{
+              background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.25)',
+              borderRadius: 'var(--r)', padding: '10px 12px', marginBottom: 14, fontSize: 12, color: 'var(--muted)', lineHeight: 1.55
+            }}>
+              💡 O sistema busca o resultado automaticamente. Se falhar, insira os números manualmente a partir de <strong style={{ color: 'var(--off)' }}>loterias.caixa.gov.br</strong>
+            </div>
+
+            <div className="flex-col gap-3">
+              <div className="field">
+                <label className="label">Número da extração <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--muted)' }}>(opcional)</span></label>
+                <input className="input" type="number"
+                  placeholder={`Ex: ${proximosSorteios?.[tipoSort]?.extracao || '6080'}`}
+                  value={numExtracao} onChange={e => setNumExtracao(e.target.value)} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <div className="field" style={{ flex: 1 }}>
+                  <label className="label">1º Prêmio <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--muted)' }}>(manual)</span></label>
+                  <input className="input" type="text" placeholder="Ex: 12345"
+                    value={primeiroPremio}
+                    onChange={e => setPrimeiroPremio(e.target.value.replace(/\D/g,''))}
+                    maxLength={5} />
+                </div>
+                <div className="field" style={{ flex: 1 }}>
+                  <label className="label">2º Prêmio <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--muted)' }}>(manual)</span></label>
+                  <input className="input" type="text" placeholder="Ex: 67890"
+                    value={segundoPremio}
+                    onChange={e => setSegundoPremio(e.target.value.replace(/\D/g,''))}
+                    maxLength={5} />
+                </div>
+              </div>
+
+              {primeiroPremio && segundoPremio && (
+                <div style={{
+                  background: 'var(--lime-dim2)', border: '1px solid rgba(197,211,42,.3)',
+                  borderRadius: 'var(--r)', padding: '10px 12px', fontSize: 12
+                }}>
+                  Número vencedor calculado: <strong style={{ fontFamily: 'var(--fd)', fontSize: 15, color: 'var(--lime)' }}>
+                    #{(primeiroPremio.slice(-2).padStart(2,'0') + segundoPremio.slice(0,4).padStart(4,'0')).padStart(6,'0')}
+                  </strong>
+                  <span style={{ color: 'var(--muted)', marginLeft: 6 }}>
+                    (2 últimos de {primeiroPremio} + 4 primeiros de {segundoPremio})
+                  </span>
+                </div>
               )}
             </div>
-            <button className="btn btn-lime" onClick={hRealizarSorteio} disabled={loading}>
+
+            <button className="btn btn-lime" style={{ marginTop: 14 }} onClick={hRealizarSorteio} disabled={loading}>
               {loading
-                ? <><div className="spinner" style={{ color: 'var(--navy)' }} /> Buscando resultado e calculando...</>
+                ? <><div className="spinner" style={{ color: 'var(--navy)' }} /> Calculando ganhadores...</>
                 : `🎰 Realizar Sorteio ${TIPOS.find(t => t.id === tipoSort)?.label}`
               }
             </button>
