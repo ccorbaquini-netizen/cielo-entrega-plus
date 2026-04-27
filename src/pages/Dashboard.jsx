@@ -82,7 +82,7 @@ function analisarBonusFrequencia(scans) {
 const PRIZES_BASE = [
   { id: 'mensal',       cls: 'p-lime', period: 'Mensal',        desc: 'Vouchers combustível, recarga e manutenção',    count: '1 a cada 2.000 bilhetes' },
   { id: 'trimestral',   cls: 'p-blue', period: 'Trimestral',    desc: 'Smartphone, capacete, kit manutenção e saúde',  count: '5 ganhadores' },
-  { id: 'semestral',    cls: 'p-teal', period: 'Semestral ★',   desc: 'Scooter elétrica, notebook, smartphone premium', count: '5 ganhadores' },
+  { id: 'semestral',    cls: 'p-teal', period: 'Semestral',    desc: 'Scooter elétrica, notebook, smartphone premium', count: '5 ganhadores' },
   { id: 'grande_premio',cls: 'p-red',  period: 'Grande Prêmio', desc: 'Moto 0km ou PIX até R$ 30.000',                 count: '1 ganhador' },
 ]
 

@@ -11,47 +11,42 @@ const corsHeaders = {
 // ── Ponto de referência para cálculo de extrações ────────────────────────────
 // Extração 6058 ocorreu em Sábado, 12/04/2026 (Milionária de Abril)
 // A cada semana: +2 extrações (quarta + sábado)
-// Sábados: +1 extração por semana
 const REF_EXTRACAO = 6058
-const REF_DATE = new Date('2026-04-12T00:00:00-03:00')
+const REF_DATE = new Date(Date.UTC(2026, 3, 12)) // 12/04/2026 UTC
 
-// ── Encontra o próximo 1º sábado do mês ─────────────────────────────────────
+// ── Encontra o próximo 1º sábado do mês (usando UTC) ─────────────────────────
 function primeiraSabadoDoMes(ano: number, mes: number): Date {
-  // mes: 0-11
-  const d = new Date(ano, mes, 1)
-  // 0=Dom, 6=Sáb
-  const diaSemana = d.getDay()
+  // Cria data no primeiro dia do mês em UTC
+  const d = new Date(Date.UTC(ano, mes, 1))
+  const diaSemana = d.getUTCDay() // 0=Dom, 6=Sáb
   const diasAte = diaSemana === 6 ? 0 : (6 - diaSemana + 7) % 7
-  // Se cair no próprio dia 1 (sábado), verifica se é o primeiro sábado
-  d.setDate(1 + diasAte)
+  d.setUTCDate(1 + diasAte)
   return d
 }
 
 // ── Estima número da extração para uma data ──────────────────────────────────
-// Lógica: a cada sábado +1 extração (sábados) e quartas +1 (quartas)
-// Simplificando: ~2 extrações por semana
 function estimarExtracaoParaData(data: Date): number {
   const diffMs = data.getTime() - REF_DATE.getTime()
   const diffDias = Math.round(diffMs / (1000 * 60 * 60 * 24))
   const diffSemanas = diffDias / 7
-  // ~2 extrações por semana (quarta + sábado)
   const diffExtracoes = Math.round(diffSemanas * 2)
   return REF_EXTRACAO + diffExtracoes
 }
 
-// ── Formata data para exibição ───────────────────────────────────────────────
+// ── Formata data para exibição (UTC → pt-BR) ─────────────────────────────────
 function fmtData(d: Date): string {
-  return d.toLocaleDateString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    timeZone: 'America/Sao_Paulo'
-  })
+  // Usa UTC para evitar deslocamento de fuso
+  const dia  = String(d.getUTCDate()).padStart(2, '0')
+  const mes  = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const ano  = d.getUTCFullYear()
+  return `${dia}/${mes}/${ano}`
 }
 
 // ── Calcula próximos sorteios ────────────────────────────────────────────────
 function calcularProximosSorteios() {
   const hoje = new Date()
-  const anoAtual = hoje.getFullYear()
-  const mesAtual = hoje.getMonth() // 0-11
+  const anoAtual = hoje.getUTCFullYear()
+  const mesAtual = hoje.getUTCMonth() // 0-11
 
   // ── MENSAL — 1º sábado do mês seguinte ──────────────────────────────────
   let mesMensal = mesAtual + 1
@@ -61,36 +56,33 @@ function calcularProximosSorteios() {
   const cicloMensal = `${anoAtual}-M${String(mesAtual + 1).padStart(2, '0')}`
 
   // ── TRIMESTRAL — 1º sábado após encerramento do trimestre ───────────────
-  const trimAtual = Math.ceil((mesAtual + 1) / 3) // 1-4
-  // Mês de encerramento do trimestre atual (0-indexed)
-  const mesEncerramentoTrim = trimAtual * 3 - 1 // Mar=2, Jun=5, Set=8, Dez=11
+  const trimAtual = Math.ceil((mesAtual + 1) / 3)
+  const mesEncerramentoTrim = trimAtual * 3 - 1 // 0-indexed: Mar=2, Jun=5, Set=8, Dez=11
   let anoTrimestral = anoAtual
   let mesTrimestral = mesEncerramentoTrim + 1
   if (mesTrimestral > 11) { mesTrimestral = 0; anoTrimestral++ }
-  const dataTrimestral = primeiraSabadoDoMes(anoTrimestral, mesTrimestral)
-  // Se já passou, usa próximo trimestre
-  const dataTrimFinal = dataTrimestral < hoje
-    ? primeiraSabadoDoMes(anoTrimestral, mesTrimestral + 3 > 11 ? mesTrimestral + 3 - 12 : mesTrimestral + 3)
-    : dataTrimestral
+  let dataTrimFinal = primeiraSabadoDoMes(anoTrimestral, mesTrimestral)
+  if (dataTrimFinal < hoje) {
+    const proxTrim = mesTrimestral + 3
+    dataTrimFinal = primeiraSabadoDoMes(
+      proxTrim > 11 ? anoTrimestral + 1 : anoTrimestral,
+      proxTrim > 11 ? proxTrim - 12 : proxTrim
+    )
+  }
   const cicloTrimestral = `${anoAtual}-T${trimAtual}`
 
-  // ── SEMESTRAL — 1º sábado após Jun e Dez ────────────────────────────────
-  // Semestre 1: encerra Jun → sorteio em Jul
-  // Semestre 2: encerra Dez → sorteio em Jan
+  // ── SEMESTRAL — 1º sábado após Jun (→ Jul) e Dez (→ Jan) ────────────────
+  const semAtual = mesAtual < 6 ? 1 : 2
   let dataSemestral: Date
   let cicloSemestral: string
-  const semAtual = mesAtual < 6 ? 1 : 2
   if (semAtual === 1) {
-    // Encerra em Jun (5), sorteio em Jul
-    dataSemestral = primeiraSabadoDoMes(anoAtual, 6)
+    dataSemestral = primeiraSabadoDoMes(anoAtual, 6) // Jul
     cicloSemestral = `${anoAtual}-S1`
   } else {
-    // Encerra em Dez (11), sorteio em Jan do ano seguinte
-    dataSemestral = primeiraSabadoDoMes(anoAtual + 1, 0)
+    dataSemestral = primeiraSabadoDoMes(anoAtual + 1, 0) // Jan
     cicloSemestral = `${anoAtual}-S2`
   }
   if (dataSemestral < hoje) {
-    // Já passou, pula para o próximo semestre
     if (semAtual === 1) {
       dataSemestral = primeiraSabadoDoMes(anoAtual + 1, 0)
       cicloSemestral = `${anoAtual}-S2`
@@ -109,38 +101,33 @@ function calcularProximosSorteios() {
   }
   const cicloGP = `${anoGP}`
 
+  const diasRestantes = (d: Date) =>
+    Math.ceil((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24))
+
   return {
     mensal: {
-      tipo: 'mensal',
-      ciclo: cicloMensal,
-      data: fmtData(dataMensal),
-      dataISO: dataMensal.toISOString().slice(0, 10),
+      tipo: 'mensal', ciclo: cicloMensal,
+      data: fmtData(dataMensal), dataISO: dataMensal.toISOString().slice(0, 10),
       extracao: estimarExtracaoParaData(dataMensal),
-      diasRestantes: Math.ceil((dataMensal.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24)),
+      diasRestantes: diasRestantes(dataMensal),
     },
     trimestral: {
-      tipo: 'trimestral',
-      ciclo: cicloTrimestral,
-      data: fmtData(dataTrimFinal),
-      dataISO: dataTrimFinal.toISOString().slice(0, 10),
+      tipo: 'trimestral', ciclo: cicloTrimestral,
+      data: fmtData(dataTrimFinal), dataISO: dataTrimFinal.toISOString().slice(0, 10),
       extracao: estimarExtracaoParaData(dataTrimFinal),
-      diasRestantes: Math.ceil((dataTrimFinal.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24)),
+      diasRestantes: diasRestantes(dataTrimFinal),
     },
     semestral: {
-      tipo: 'semestral',
-      ciclo: cicloSemestral,
-      data: fmtData(dataSemestral),
-      dataISO: dataSemestral.toISOString().slice(0, 10),
+      tipo: 'semestral', ciclo: cicloSemestral,
+      data: fmtData(dataSemestral), dataISO: dataSemestral.toISOString().slice(0, 10),
       extracao: estimarExtracaoParaData(dataSemestral),
-      diasRestantes: Math.ceil((dataSemestral.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24)),
+      diasRestantes: diasRestantes(dataSemestral),
     },
     grande_premio: {
-      tipo: 'grande_premio',
-      ciclo: cicloGP,
-      data: fmtData(dataGP),
-      dataISO: dataGP.toISOString().slice(0, 10),
+      tipo: 'grande_premio', ciclo: cicloGP,
+      data: fmtData(dataGP), dataISO: dataGP.toISOString().slice(0, 10),
       extracao: estimarExtracaoParaData(dataGP),
-      diasRestantes: Math.ceil((dataGP.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24)),
+      diasRestantes: diasRestantes(dataGP),
     },
   }
 }
