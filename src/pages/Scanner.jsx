@@ -35,19 +35,40 @@ const IcoChev = () => (
   </svg>
 )
 
-/* ── Geolocalização ──────────────────────────────────────────────────────── */
+/* ── Geolocalização — solicita permissão explicitamente no iOS ───────────── */
 function getGeolocacao() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) { reject(new Error('GPS não disponível neste dispositivo')); return }
-    navigator.geolocation.getCurrentPosition(
-      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+
+    // iOS exige que a solicitação seja feita diretamente por interação do usuário
+    // Usamos watchPosition com clearWatch imediato para forçar o prompt no iOS
+    let tentou = false
+    const id = navigator.geolocation.watchPosition(
+      pos => {
+        if (tentou) return
+        tentou = true
+        navigator.geolocation.clearWatch(id)
+        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy })
+      },
       err => {
-        if (err.code === 1) reject(new Error('Permissão de localização negada. Ative nas configurações do navegador.'))
+        if (tentou) return
+        tentou = true
+        navigator.geolocation.clearWatch(id)
+        if (err.code === 1) reject(new Error('Permissão de localização negada. Ative nas configurações do celular.'))
         else if (err.code === 2) reject(new Error('GPS indisponível. Verifique se o GPS está ativo.'))
         else reject(new Error('Tempo esgotado ao obter localização.'))
       },
-      { timeout: 20000, maximumAge: 5000, enableHighAccuracy: true }
+      { timeout: 20000, maximumAge: 0, enableHighAccuracy: true }
     )
+
+    // Timeout de segurança
+    setTimeout(() => {
+      if (!tentou) {
+        tentou = true
+        navigator.geolocation.clearWatch(id)
+        reject(new Error('Tempo esgotado ao obter localização.'))
+      }
+    }, 21000)
   })
 }
 

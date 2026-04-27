@@ -125,6 +125,39 @@ function AbaEntregadores() {
   const [confirm, setConfirm] = useState(null)
   const [feedback, setFeedback] = useState('')
   const [editando, setEditando] = useState(null)
+  const [filtroCidade, setFiltroCidade] = useState('')
+  const [filtroUF, setFiltroUF] = useState('')
+
+  // Filtra lista localmente
+  const listaFiltrada = lista.filter(e => {
+    const matchCidade = !filtroCidade || (e.cidade || '').toLowerCase().includes(filtroCidade.toLowerCase())
+    const matchUF = !filtroUF || (e.uf || '').toUpperCase() === filtroUF.toUpperCase()
+    return matchCidade && matchUF
+  })
+
+  function exportarCSV() {
+    if (!listaFiltrada.length) return
+    const flat = listaFiltrada.map(e => ({
+      'Nome':        e.nome,
+      'CPF':         (e.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'),
+      'Cidade':      e.cidade || '',
+      'UF':          e.uf || '',
+      'Telefone':    e.telefone || '',
+      'Status':      e.status,
+      'Plataforma':  e.plataforma || '',
+      'Cadastro':    fmtData(e.created_at),
+    }))
+    const cols = Object.keys(flat[0])
+    const rows = flat.map(r => cols.map(c => `"${String(r[c]).replace(/"/g,'""')}"`).join(';'))
+    const csv = [cols.join(';'), ...rows].join('\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `entregadores_${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   useEffect(() => { carregar() }, [])
 
@@ -294,12 +327,34 @@ function AbaEntregadores() {
   return (
     <div>
       {feedback && <div className="alert alert-lime" style={{ marginBottom: 14 }}><span>{feedback}</span></div>}
-      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>{lista.length} entregador{lista.length !== 1 ? 'es' : ''} cadastrado{lista.length !== 1 ? 's' : ''}</div>
-      {lista.map((e, i) => (
+
+      {/* Filtros */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <input className="input" type="text" placeholder="Filtrar por cidade..."
+          value={filtroCidade} onChange={e => setFiltroCidade(e.target.value)}
+          style={{ flex: 1, minWidth: 140, padding: '8px 12px', fontSize: 12 }} />
+        <select className="input" value={filtroUF} onChange={e => setFiltroUF(e.target.value)}
+          style={{ width: 80, padding: '8px 8px', fontSize: 12 }}>
+          <option value="">UF</option>
+          {['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <button className="btn btn-outline" style={{ width: 'auto', padding: '8px 14px', fontSize: 12 }}
+          onClick={exportarCSV} disabled={!listaFiltrada.length}>
+          ⬇ CSV
+        </button>
+      </div>
+
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
+        {listaFiltrada.length} de {lista.length} entregador{lista.length !== 1 ? 'es' : ''}
+      </div>
+
+      {listaFiltrada.map((e, i) => (
         <div key={e.id} onClick={() => abrirDetalhes(e)}
           style={{
             display: 'flex', alignItems: 'center', gap: 12, padding: '13px 0',
-            borderBottom: i < lista.length - 1 ? '1px solid var(--border)' : 'none',
+            borderBottom: i < listaFiltrada.length - 1 ? '1px solid var(--border)' : 'none',
             cursor: 'pointer'
           }}>
           {e.selfie_url

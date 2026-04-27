@@ -5,7 +5,8 @@ import {
   buscarTokensNaoConvertidos,
   buscarHistoricoScans,
   buscarBilhetes,
-  converterTokensEmBilhetes
+  converterTokensEmBilhetes,
+  atualizarFotoPerfil
 } from '../lib/supabase'
 import Logo from '../components/Logo'
 
@@ -482,6 +483,19 @@ export default function Dashboard() {
   const [convertendo,  setConvertendo]  = useState(false)
   const [msgConversao, setMsgConversao] = useState('')
   const [abaAtiva,     setAbaAtiva]     = useState(0)
+  const [atualizandoFoto, setAtualizandoFoto] = useState(false)
+  const fotoRef = useRef()
+
+  async function hAtualizarFoto(e) {
+    const arquivo = e.target.files[0]
+    if (!arquivo || !entregador) return
+    setAtualizandoFoto(true)
+    try {
+      const url = await atualizarFotoPerfil(entregador.cpf, arquivo)
+      setEntregador(prev => ({ ...prev, selfie_url: url }))
+    } catch {}
+    setAtualizandoFoto(false)
+  }
 
   const progPct    = Math.min((tokensDisp % 10) / 10 * 100, 100)
   const animTokens = useAnimatedValue(tokensDisp, 800)
@@ -537,19 +551,35 @@ export default function Dashboard() {
           <div className="header-sub">Olá, {nome1}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {selfieUrl ? (
-            <img src={selfieUrl} alt={nome1} style={{
-              width: 38, height: 38, borderRadius: '50%', objectFit: 'cover',
-              border: '2px solid var(--lime)', boxShadow: '0 0 10px rgba(197,211,42,.3)', flexShrink: 0
-            }} />
-          ) : (
+          {/* Foto clicável para alterar */}
+          <div style={{ position: 'relative', flexShrink: 0 }}
+            onClick={() => fotoRef.current?.click()}
+            title="Toque para alterar a foto">
+            {selfieUrl ? (
+              <img src={selfieUrl} alt={nome1} style={{
+                width: 38, height: 38, borderRadius: '50%', objectFit: 'cover',
+                border: '2px solid var(--lime)', boxShadow: '0 0 10px rgba(197,211,42,.3)',
+                cursor: 'pointer', opacity: atualizandoFoto ? .5 : 1
+              }} />
+            ) : (
+              <div style={{
+                width: 38, height: 38, borderRadius: '50%',
+                background: 'var(--card)', border: '2px solid var(--border)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, cursor: 'pointer'
+              }}>👤</div>
+            )}
+            {/* Ícone de câmera sobre a foto */}
             <div style={{
-              width: 38, height: 38, borderRadius: '50%',
-              background: 'var(--card)', border: '2px solid var(--border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16, flexShrink: 0
-            }}>👤</div>
-          )}
+              position: 'absolute', bottom: -2, right: -2,
+              width: 16, height: 16, borderRadius: '50%',
+              background: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 9, cursor: 'pointer', border: '1.5px solid var(--navy)'
+            }}>📷</div>
+          </div>
+          {/* Input oculto para seleção de foto */}
+          <input ref={fotoRef} type="file" accept="image/*" capture="user"
+            style={{ display: 'none' }} onChange={hAtualizarFoto} />
           <div style={{
             fontFamily: 'var(--fd)', fontSize: 11, fontWeight: 700, letterSpacing: '.08em',
             textTransform: 'uppercase', color: 'var(--lime)',

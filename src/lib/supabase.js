@@ -443,3 +443,30 @@ export async function buscarElegiveis(tipo) {
     .filter(e => e.elegivel)
     .sort((a, b) => b.bilhetes.length - a.bilhetes.length)
 }
+
+// ─── FOTO DE PERFIL ───────────────────────────────────────────────────────────
+
+export async function atualizarFotoPerfil(cpf, arquivo) {
+  const cpfLimpo = cpf.replace(/\D/g, '')
+  const path = `selfies/${cpfLimpo}.jpg`
+
+  // Upload (sobrescreve a foto existente)
+  const { error: errUpload } = await supabase.storage
+    .from('entregadores')
+    .upload(path, arquivo, { upsert: true, contentType: 'image/jpeg' })
+
+  if (errUpload) throw new Error(errUpload.message)
+
+  // Busca URL pública
+  const { data } = supabase.storage.from('entregadores').getPublicUrl(path)
+  const url = data.publicUrl + '?t=' + Date.now() // cache-bust
+
+  // Atualiza no banco
+  const { error: errUpdate } = await supabase
+    .from('entregadores')
+    .update({ selfie_url: url })
+    .eq('cpf', cpfLimpo)
+
+  if (errUpdate) throw new Error(errUpdate.message)
+  return url
+}

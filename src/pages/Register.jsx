@@ -45,10 +45,12 @@ export default function Register() {
   const [selfieUrl, setSelfieUrl] = useState(null)
   const [termos, setTermos] = useState(false)
 
-  const fileRef = useRef()
+  const fileRef = useRef()        // input com capture=user (câmera)
+  const galleryRef = useRef()     // input sem capture (galeria)
   const videoRef = useRef()
   const [camera, setCamera] = useState(false)
   const [stream, setStream] = useState(null)
+  const [pwaInstalado, setPwaInstalado] = useState(false)
 
   /* ── Step handlers ── */
   async function hCPF() {
@@ -79,6 +81,10 @@ export default function Register() {
       setStream(ms); setCamera(true)
       setTimeout(() => { if (videoRef.current) videoRef.current.srcObject = ms }, 80)
     } catch { fileRef.current?.click() }
+  }
+
+  function abrirGaleria() {
+    galleryRef.current?.click()
   }
 
   function tirarFoto() {
@@ -242,13 +248,17 @@ export default function Register() {
                     <span>Toque para a câmera</span>
                   </div>
                   <button className="btn btn-outline" style={{ marginTop: 6 }}
-                    onClick={() => fileRef.current?.click()}>
+                    onClick={abrirGaleria}>
                     Ou escolher da galeria
                   </button>
                 </div>
               )}
 
+              {/* Input câmera (com capture=user) */}
               <input ref={fileRef} type="file" accept="image/*" capture="user"
+                style={{ display: 'none' }} onChange={hFile} />
+              {/* Input galeria (SEM capture — abre seletor de arquivo) */}
+              <input ref={galleryRef} type="file" accept="image/*"
                 style={{ display: 'none' }} onChange={hFile} />
 
               {erro && <div className="alert alert-err mt-4"><span>{erro}</span></div>}
@@ -312,13 +322,18 @@ export default function Register() {
               {nome.split(' ')[0]}!
             </p>
 
-            {/* Banner de instalação PWA — Android ou iOS */}
+            {/* PWA Install — obrigatório antes de acessar o painel */}
             <div style={{ textAlign: 'left' }}>
-              <PWAInstallBanner onInstalado={() => {}} />
+              <PWAInstallBanner onInstalado={() => setPwaInstalado(true)} />
             </div>
 
-            <button className="btn btn-lime" style={{ marginTop: 20 }} onClick={() => nav('/painel')}>
-              Ir para meu painel <ChevR />
+            {/* Botão só aparece após instalação (ou no iOS onde não é possível forçar) */}
+            <button
+              className="btn btn-lime"
+              style={{ marginTop: 20 }}
+              onClick={() => nav('/painel')}
+            >
+              {pwaInstalado ? 'Ir para meu painel' : 'Pular e acessar o painel'} <ChevR />
             </button>
           </div>
         )}
