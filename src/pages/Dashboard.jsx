@@ -515,6 +515,7 @@ export default function Dashboard() {
   const [atualizandoFoto, setAtualizandoFoto] = useState(false)
   const [proximosSorteios, setProximosSorteios] = useState(null)
   const fotoRef = useRef()
+  const fotoGaleriaRef = useRef()
 
   async function hAtualizarFoto(e) {
     const arquivo = e.target.files[0]
@@ -583,9 +584,9 @@ export default function Dashboard() {
           <div className="header-sub">Olá, {nome1}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Foto clicável para alterar */}
+          {/* Foto clicável para alterar — abre galeria diretamente */}
           <div style={{ position: 'relative', flexShrink: 0 }}
-            onClick={() => fotoRef.current?.click()}
+            onClick={() => fotoGaleriaRef.current?.click()}
             title="Toque para alterar a foto">
             {selfieUrl ? (
               <img src={selfieUrl} alt={nome1} style={{
@@ -609,8 +610,11 @@ export default function Dashboard() {
               fontSize: 9, cursor: 'pointer', border: '1.5px solid var(--navy)'
             }}>📷</div>
           </div>
-          {/* Input oculto para seleção de foto */}
+          {/* Input câmera (com capture) */}
           <input ref={fotoRef} type="file" accept="image/*" capture="user"
+            style={{ display: 'none' }} onChange={hAtualizarFoto} />
+          {/* Input galeria (SEM capture) — abre seletor de arquivos */}
+          <input ref={fotoGaleriaRef} type="file" accept="image/*"
             style={{ display: 'none' }} onChange={hAtualizarFoto} />
           <div style={{
             fontFamily: 'var(--fd)', fontSize: 11, fontWeight: 700, letterSpacing: '.08em',
